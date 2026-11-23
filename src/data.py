@@ -13,7 +13,8 @@ import os
 import re
 import unicodedata
 import argparse
-from typing import Tuple, Dict
+from typing import Tuple, Dict, List, Optional
+import numpy as np
 
 
 # Ethiopic Unicode script range:
@@ -149,6 +150,114 @@ def preprocess_file(
     print(f"[Data Preprocessing] Saved val split ({len(val_text)} chars) -> {val_path}")
 
     return train_path, val_path
+
+
+# ============================================================================
+# Next-Token Dataset & NumPy Batching Pipeline
+# ============================================================================
+
+class AmharicDataset:
+    """
+    NumPy-based Dataset for Next-Token Autoregressive Prediction.
+    
+    Next-Token Prediction Concept:
+    -----------------------------
+    Language models learn by predicting the next token in a sequence.
+    Given an integer token sequence [x_0, x_1, x_2, ..., x_T]:
+      - Input  X: [x_0, x_1, ..., x_{T-1}]
+      - Target Y: [x_1, x_2, ..., x_T]
+      
+    Notice that Y is shifted to the right by exactly one token.
+    At any position t, the causal language model uses only past tokens
+    (x_0 through x_t) to predict target token Y[t] = x_{t+1}.
+    
+    Array Shapes:
+      Input  X: shape (batch_size, block_size), dtype np.int64
+      Target Y: shape (batch_size, block_size), dtype np.int64
+    """
+
+    def __init__(self, token_ids: List[int], block_size: int):
+        """
+        Args:
+            token_ids (List[int]): Complete 1D sequence of token IDs.
+            block_size (int): Context window length (T).
+        """
+        assert len(token_ids) > block_size, (
+            f"Token sequence length ({len(token_ids)}) must be strictly greater "
+            f"than block_size ({block_size}) to form at least one (input, target) pair."
+        )
+        self.data = np.array(token_ids, dtype=np.int64)
+        self.block_size = block_size
+
+    def __len__(self) -> int:
+        """Total number of valid contiguous training chunks of length block_size."""
+        return len(self.data) - self.block_size
+
+    def __getitem__(self, idx: int) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Retrieves a single (input, target) pair shifted by one token.
+        
+        Args:
+            idx (int): Starting index in token sequence.
+            
+        Returns:
+            Tuple[np.ndarray, np.ndarray]:
+                x: slice [idx : idx + block_size]
+                y: slice [idx + 1 : idx + block_size + 1]
+        """
+        x = self.data[idx : idx + self.block_size]
+        y = self.data[idx + 1 : idx + self.block_size + 1]
+        return x, y
+
+    def get_batch(
+        self,
+        batch_size: int,
+        rng: Optional[np.random.RandomState] = None
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Samples a mini-batch of (X, Y) pairs randomly from the dataset.
+        
+        Args:
+            batch_size (int): Number of parallel sequences (B).
+            rng (Optional[np.random.RandomState]): Optional NumPy random state for reproducibility.
+            
+        Returns:
+            X (np.ndarray): Shape (B, T) - token IDs for context.
+            Y (np.ndarray): Shape (B, T) - shifted token IDs for next-token supervision.
+        """
+        max_idx = len(self)
+        if rng is None:
+            indices = np.random.randint(0, max_idx, size=batch_size)
+        else:
+            indices = rng.randint(0, max_idx, size=batch_size)
+
+        # Batch inputs and targets
+        X = np.empty((batch_size, self.block_size), dtype=np.int64)
+        Y = np.empty((batch_size, self.block_size), dtype=np.int64)
+
+        for b, idx in enumerate(indices):
+            X[b] = self.data[idx : idx + self.block_size]
+            Y[b] = self.data[idx + 1 : idx + self.block_size + 1]
+
+        return X, Y
+
+
+def create_datasets_from_text(
+    train_text: str,
+    val_text: str,
+    tokenizer,
+    block_size: int = 128
+) -> Tuple[AmharicDataset, AmharicDataset]:
+    """
+    Encodes raw train and validation text into integer IDs and wraps them into AmharicDataset instances.
+    """
+    train_ids = tokenizer.encode(train_text)
+    val_ids = tokenizer.encode(val_text)
+    
+    train_ds = AmharicDataset(train_ids, block_size=block_size)
+    val_ds = AmharicDataset(val_ids, block_size=block_size)
+    
+    return train_ds, val_ds
 
 
 def main():
