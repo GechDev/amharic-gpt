@@ -1,0 +1,6 @@
+# Minimal external dependencies for educational from-scratch implementation
+# Core mathematics and array operations:
+numpy>=1.24.0
+
+# Testing and verification:
+pytest>=7.0.0

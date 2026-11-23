@@ -1,0 +1,33 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Caching and testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environments
+venv/
+.venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Checkpoint archives (keep sample checkpoints if needed)
+checkpoints/*.npz
+!checkpoints/.gitkeep
+
+# Outputs
+outputs/*
+!outputs/.gitkeep
+
+# Large raw datasets (keep gitkeep and sample)
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/sample_amharic.txt
+data/processed/*
+!data/processed/.gitkeep
