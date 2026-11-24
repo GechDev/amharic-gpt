@@ -45,16 +45,18 @@ This project implements a complete generative language model for Amharic from fi
 ## Dataset
 
 ### Source & Description
-- **Recommended Corpus**: Publicly available Amharic news and encyclopedic corpora, such as the [IsraelAbebe Amharic News Dataset](https://github.com/IsraelAbebe/Amharic-News-Text-Classification-Dataset) and [Amharic Wikipedia](https://dumps.wikimedia.org/amwiki/).
-- **Bundled Corpus**: An authentic, diverse sample corpus is included at `data/raw/sample_amharic.txt` (exact size: 3,940 characters, 741 words, 71 lines, 170 unique characters) covering culture, education, science, history, computing, and everyday Ethiopian life.
-- **License**: Creative Commons Attribution 4.0 (CC BY 4.0) / Open Access.
+- **Recommended Large Corpus (5 MB – 20+ MB)**: Publicly available Amharic news and encyclopedic corpora, such as the [IsraelAbebe Amharic News Dataset](https://github.com/IsraelAbebe/Amharic-News-Text-Classification-Dataset), [MasakhaNEWS Amharic](https://github.com/masakhane-io/masakhane-news), and [Amharic Wikipedia dumps](https://dumps.wikimedia.org/amwiki/).
+- **Bundled Smoke-Test Fixture**: An authentic, curated smoke-test fixture is included at `data/raw/sample_amharic.txt` (exact size: 3,940 characters, 741 words, 71 lines, 170 unique characters) for rapid local CPU testing, unit tests, and overfitting sanity checks.
+- **License**: Creative Commons Zero (CC0) / Public Domain dedication for educational demonstration.
 
-### Preprocessing Pipeline (`src/data.py`)
-1. **Unicode NFKC Normalization**: Harmonizes composite Unicode glyphs into canonical Ethiopic code points (`unicodedata.normalize('NFKC', text)`).
-2. **Noise Filtering**: Removes HTML tags, URLs, email addresses, zero-width spaces (`\u200b`, `\ufeff`), and non-printable control characters.
-3. **Fidel & Punctuation Preservation**: Preserves the complete Ethiopic syllabary (U+1200 to U+137F), Ethiopic punctuation (`፡`, `።`, `፣`, `፤`, `፥`, `፦`), Arabic numerals, and standard punctuation (`?`, `!`, `,`, `.`).
-4. **Whitespace Regularization**: Consolidates consecutive spaces into single spaces and collapses redundant blank lines into clean paragraph boundaries.
-5. **Train/Validation Splitting**: Splits the preprocessed text sequentially into 90% training (`data/processed/train.txt`) and 10% validation (`data/processed/val.txt`).
+### Preprocessing & Normalization Pipeline (`src/amharic_normalizer.py`, `src/data.py`)
+1. **Unicode NFKC Technical Reality**: NFKC resolves compatibility Latin ligatures and decomposed combining diacritics. It does *not* decompose or alter atomic Ethiopic Fidel syllables. Domain-specific Amharic normalization is therefore implemented explicitly.
+2. **Ethiopic Wordspace (U+1361 `፡`) -> Space**: Converts classical two-dot word separators into standard ASCII whitespace for uniform token boundaries.
+3. **Optional Homophone Normalization**: Configurable mapping for merged consonants across all seven vowel orders: ሐ/ኀ -> ሀ, ሠ -> ሰ, ዐ -> አ, ፀ -> ጸ. Disabled by default to preserve classical Ge'ez etymology and formal orthography.
+4. **Punctuation Normalization**: Collapses repeated punctuation (`።።`, `....`, `????`, `!!!!`) while strictly preserving Ethiopic punctuation (`።`, `፣`, `፤`, `፥`, `፦`, `፧`, `፨`) and Ethiopic numerals (`፩` through `፼`).
+5. **Low-Ratio & Noise Filtering**: Removes HTML tags, URLs, emails, zero-width spaces, and filters out non-Amharic lines where the Ethiopic character ratio is below 50%.
+6. **Exact-Duplicate Removal**: Drops duplicate lines/documents and logs duplicate counts in the corpus report.
+7. **Document-Level Seeded Splitting**: Partitions complete documents with a deterministic pseudo-random shuffle into 90% train, 5% val, and 5% test splits (never a contiguous tail), separated by `<EOS>` tokens.
 
 ---
 
@@ -316,10 +318,14 @@ pip install -r requirements.txt
 
 ## Usage
 
-### 1. Data Preprocessing
-Preprocesses raw Amharic text, normalizes Unicode, and generates `train.txt` and `val.txt`:
+### 1. Data Preprocessing & Corpus Preparation
+Ingests raw Amharic text, normalizes Ethiopic script, removes duplicates, filters low-ratio noise, and generates `train.txt`, `val.txt`, and `test.txt` with document `<EOS>` separators:
 ```bash
-python -m src.data --input data/raw/sample_amharic.txt --output_dir data/processed
+# Ingest smoke-test fixture:
+python scripts/prepare_corpus.py --input data/raw/sample_amharic.txt --output_dir data/processed --seed 42
+
+# View statistical report:
+cat outputs/corpus_report.md
 ```
 
 ### 2. Training the Model
@@ -343,7 +349,7 @@ python -m src.generate --prompt "ትምህርት" --max_new_tokens 80 --temperat
 ```
 
 ### 4. Running the Tests
-Run the 43 unit tests verifying all mathematical operations, gradient backpropagation, checkpoint integrity, and generation:
+Run the 53 unit tests verifying all mathematical operations, gradient backpropagation, Amharic normalization rules, checkpoint integrity, and generation:
 ```bash
 pytest tests/ -v
 ```
