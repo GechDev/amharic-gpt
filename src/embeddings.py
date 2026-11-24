@@ -111,17 +111,20 @@ class PositionalEmbedding:
         self.grad_W = np.zeros_like(self.W)
         self.cached_seq_len: int = 0
 
-    def forward(self, seq_len: int) -> np.ndarray:
+    def forward(self, seq_len: int, start_pos: int = 0) -> np.ndarray:
         """
-        Forward lookup: retrieves position vectors for positions [0, seq_len - 1].
+        Forward lookup: retrieves position vectors for positions [start_pos, start_pos + seq_len - 1].
+        Applies sliding window policy if indices exceed block_size.
         """
-        assert seq_len <= self.block_size, (
-            f"Sequence length ({seq_len}) exceeds maximum context length ({self.block_size})."
-        )
-        self.cached_seq_len = seq_len
-        # Slice the first seq_len positions and expand dimensions for batch broadcasting
-        # Shape: (1, seq_len, n_embd)
-        return self.W[:seq_len][np.newaxis, :, :]
+        end_pos = start_pos + seq_len
+        if end_pos <= self.block_size:
+            self.cached_seq_len = end_pos
+            return self.W[start_pos:end_pos][np.newaxis, :, :]
+
+        # Sliding window policy: clamp positions to valid block_size indices
+        pos_indices = np.minimum(np.arange(start_pos, end_pos), self.block_size - 1)
+        self.cached_seq_len = self.block_size
+        return self.W[pos_indices][np.newaxis, :, :]
 
     def backward(self, d_out: np.ndarray) -> None:
         """
@@ -157,14 +160,20 @@ class GPTEmbeddings:
         self.pos_emb = PositionalEmbedding(block_size, n_embd, rng=rng, dtype=dtype)
         self.dropout = Dropout(p=dropout, rng=rng)
 
-    def forward(self, token_ids: np.ndarray, training: bool = True) -> np.ndarray:
+    def forward(
+        self,
+        token_ids: np.ndarray,
+        start_pos: int = 0,
+        training: bool = True,
+    ) -> np.ndarray:
         """
         token_ids: shape (B, T)
+        start_pos: starting position index for positional embeddings
         returns:   shape (B, T, n_embd)
         """
         B, T = token_ids.shape
         tok_out = self.token_emb.forward(token_ids)
-        pos_out = self.pos_emb.forward(T)
+        pos_out = self.pos_emb.forward(T, start_pos=start_pos)
         # Elementwise addition of token semantics and position index
         out = tok_out + pos_out
         return self.dropout.forward(out, training=training)

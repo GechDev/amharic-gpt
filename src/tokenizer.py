@@ -85,6 +85,11 @@ class AmharicTokenizer:
         """Returns the total number of tokens in the vocabulary."""
         return len(self.char_to_id)
 
+    @property
+    def vocab(self) -> Dict[str, int]:
+        """Provides consistent dictionary interface mapping tokens/characters to IDs."""
+        return self.char_to_id
+
     def build_vocab(self, text: str) -> None:
         """
         Builds the character-level vocabulary from training text.

@@ -21,9 +21,84 @@ Finally, attention weights are multiplied by V to produce the context vector.
 """
 
 import numpy as np
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, List
 from src.math_utils import softmax, softmax_backward, create_causal_mask, init_weights, init_zeros
 from src.activations import Dropout
+
+
+class KVCache:
+    """
+    Key-Value Cache for incremental autoregressive decoding (Lecture Slide 15).
+
+    Why KV Caching?
+    ---------------
+    In standard autoregressive generation without caching, generating N tokens requires
+    O(N^2) attention operations because all past tokens are re-processed at every step.
+
+    Because causal attention prevents future tokens from altering past representations,
+    the Key (K) and Value (V) projections for past tokens remain invariant.
+    By caching past K and V tensors:
+      - Prefill phase: Process initial prompt of length T_prompt once, caching K and V.
+      - Decode phase: Process only 1 new token per step, computing its Q and appending
+        its new K and V to the cache.
+      - Complexity drops from O(T^2) per step to O(T) per step (total O(T^2) vs O(T^3)).
+
+    Context Overflow Policy (Sliding Window):
+    -----------------------------------------
+    When sequence length reaches block_size, the cache evicts the oldest entries:
+      K = K[:, :, -block_size:, :]
+      V = V[:, :, -block_size:, :]
+    This maintains a sliding window of the most recent block_size tokens.
+    """
+
+    def __init__(self, max_seq_len: int = 128):
+        self.max_seq_len = max_seq_len
+        self.k: Optional[np.ndarray] = None  # Shape: (B, H, T, d_k)
+        self.v: Optional[np.ndarray] = None  # Shape: (B, H, T, d_k)
+
+    def update(self, new_k: np.ndarray, new_v: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Appends new_k and new_v to the cache and enforces sliding window policy.
+        
+        Args:
+            new_k (np.ndarray): New key tensor of shape (B, H, T_new, d_k) or (B, T_new, D).
+            new_v (np.ndarray): New value tensor of shape (B, H, T_new, d_k) or (B, T_new, D).
+            
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: Complete cached keys and values.
+        """
+        seq_axis = 2 if new_k.ndim == 4 else 1
+
+        if self.k is None:
+            self.k = new_k
+            self.v = new_v
+        else:
+            self.k = np.concatenate([self.k, new_k], axis=seq_axis)
+            self.v = np.concatenate([self.v, new_v], axis=seq_axis)
+
+        # Sliding window policy for context overflow
+        curr_len = self.k.shape[seq_axis]
+        if curr_len > self.max_seq_len:
+            if seq_axis == 2:
+                self.k = self.k[:, :, -self.max_seq_len:, :]
+                self.v = self.v[:, :, -self.max_seq_len:, :]
+            else:
+                self.k = self.k[:, -self.max_seq_len:, :]
+                self.v = self.v[:, -self.max_seq_len:, :]
+
+        return self.k, self.v
+
+    def reset(self) -> None:
+        """Clears the cache."""
+        self.k = None
+        self.v = None
+
+    @property
+    def seq_len(self) -> int:
+        """Returns the current number of cached tokens."""
+        if self.k is None:
+            return 0
+        return self.k.shape[2] if self.k.ndim == 4 else self.k.shape[1]
 
 
 class CausalSelfAttention:
@@ -86,9 +161,14 @@ class CausalSelfAttention:
         self.cached_V: Optional[np.ndarray] = None
         self.cached_weights: Optional[np.ndarray] = None
 
-    def forward(self, X: np.ndarray) -> np.ndarray:
+    def forward(
+        self,
+        X: np.ndarray,
+        kv_cache: Optional[KVCache] = None,
+        start_pos: int = 0,
+    ) -> np.ndarray:
         """
-        Forward pass for single-head causal self-attention.
+        Forward pass for single-head causal self-attention with optional KV Cache.
         """
         B, T, D = X.shape
         self.cached_X = X
@@ -99,24 +179,34 @@ class CausalSelfAttention:
         K = X @ self.W_k + self.b_k
         V = X @ self.W_v + self.b_v
 
+        # Update KV cache if provided
+        if kv_cache is not None:
+            K, V = kv_cache.update(K, V)
+        T_total = K.shape[1]
+
         self.cached_Q = Q
         self.cached_K = K
         self.cached_V = V
 
         # Scaled dot-product scores: Q @ K.T
-        # (B, T, D) @ (B, D, T) -> (B, T, T)
+        # (B, T, D) @ (B, D, T_total) -> (B, T, T_total)
         scores = (Q @ K.swapaxes(-1, -2)) * self.scale
 
         # Apply causal mask: prevents attending to future positions
-        mask = create_causal_mask(T, dtype=X.dtype)
-        masked_scores = scores + mask  # broadcast (T, T) to (B, T, T)
+        if T > 1 or (kv_cache is not None and T_total > T and start_pos < T_total - 1):
+            q_pos = start_pos + np.arange(T)[:, None]
+            k_pos = np.arange(T_total)[None, :]
+            causal_mask = np.where(k_pos <= q_pos, 0.0, -np.inf).astype(X.dtype)
+            masked_scores = scores + causal_mask
+        else:
+            masked_scores = scores
 
         # Attention weights via numerically stable softmax
         weights = softmax(masked_scores, axis=-1)
         self.cached_weights = weights
 
         # Context output: weighted sum of values
-        # (B, T, T) @ (B, T, D) -> (B, T, D)
+        # (B, T, T_total) @ (B, T_total, D) -> (B, T, D)
         out = weights @ V
         return out
 
@@ -299,9 +389,15 @@ class CausalMultiHeadAttention:
         self.cached_weights: Optional[np.ndarray] = None
         self.cached_concat: Optional[np.ndarray] = None
 
-    def forward(self, X: np.ndarray, training: bool = True) -> np.ndarray:
+    def forward(
+        self,
+        X: np.ndarray,
+        training: bool = True,
+        kv_cache: Optional[KVCache] = None,
+        start_pos: int = 0,
+    ) -> np.ndarray:
         """
-        Forward pass for Multi-Head Causal Attention.
+        Forward pass for Multi-Head Causal Attention with optional KV Cache (Lecture Slide 15).
         
         Input  X: shape (B, T, D)
         Output:   shape (B, T, D)
@@ -323,37 +419,47 @@ class CausalMultiHeadAttention:
         K = K.reshape(B, T, H, d_k).swapaxes(1, 2)
         V = V.reshape(B, T, H, d_k).swapaxes(1, 2)
 
+        # Step 3: KV Cache update (incremental decoding)
+        if kv_cache is not None:
+            K, V = kv_cache.update(K, V)
+        T_total = K.shape[2]
+
         self.cached_Q = Q
         self.cached_K = K
         self.cached_V = V
 
-        # Step 3: Scaled dot-product attention per head
-        # (B, H, T, d_k) @ (B, H, d_k, T) -> (B, H, T, T)
+        # Step 4: Scaled dot-product attention per head
+        # (B, H, T, d_k) @ (B, H, d_k, T_total) -> (B, H, T, T_total)
         scores = (Q @ K.swapaxes(-1, -2)) * self.scale
 
-        # Step 4: Apply causal mask
-        # Mask shape (T, T) broadcasts across B and H to (B, H, T, T)
-        mask = create_causal_mask(T, dtype=X.dtype)
-        masked_scores = scores + mask
+        # Step 5: Apply causal mask
+        # If processing multiple tokens or past keys are present
+        if T > 1 or (kv_cache is not None and T_total > T and start_pos < T_total - 1):
+            q_pos = start_pos + np.arange(T)[:, None]
+            k_pos = np.arange(T_total)[None, :]
+            causal_mask = np.where(k_pos <= q_pos, 0.0, -np.inf).astype(X.dtype)
+            masked_scores = scores + causal_mask
+        else:
+            masked_scores = scores
 
-        # Step 5: Softmax to get attention weights
-        # Shape: (B, H, T, T)
+        # Step 6: Softmax to get attention weights
+        # Shape: (B, H, T, T_total)
         weights = softmax(masked_scores, axis=-1)
         self.cached_weights = weights
 
         # Apply attention dropout
         weights_dropped = self.attn_dropout.forward(weights, training=training)
 
-        # Step 6: Attention output per head
-        # (B, H, T, T) @ (B, H, T, d_k) -> (B, H, T, d_k)
+        # Step 7: Attention output per head
+        # (B, H, T, T_total) @ (B, H, T_total, d_k) -> (B, H, T, d_k)
         head_out = weights_dropped @ V
 
-        # Step 7: Concatenate heads
+        # Step 8: Concatenate heads
         # (B, H, T, d_k) -> (B, T, H, d_k) -> (B, T, D)
         concat = head_out.swapaxes(1, 2).reshape(B, T, D)
         self.cached_concat = concat
 
-        # Step 8: Output linear projection
+        # Step 9: Output linear projection
         # (B, T, D) @ (D, D) + (D,) -> (B, T, D)
         out = concat @ self.W_o + self.b_o
         out = self.resid_dropout.forward(out, training=training)

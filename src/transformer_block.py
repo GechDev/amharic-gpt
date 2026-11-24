@@ -96,9 +96,15 @@ class TransformerBlock:
         self.cached_x0: Optional[np.ndarray] = None
         self.cached_x1: Optional[np.ndarray] = None
 
-    def forward(self, x: np.ndarray, training: bool = True) -> np.ndarray:
+    def forward(
+        self,
+        x: np.ndarray,
+        training: bool = True,
+        kv_cache: Optional[Any] = None,
+        start_pos: int = 0,
+    ) -> np.ndarray:
         """
-        Forward pass through the Transformer block.
+        Forward pass through the Transformer block with optional KV Cache.
         
         Input x: shape (B, T, n_embd)
         Returns: shape (B, T, n_embd)
@@ -108,7 +114,12 @@ class TransformerBlock:
         # 1. Pre-LN Attention sub-layer with residual connection
         # x1 = x + Attention(LN_1(x))
         norm_x0 = self.ln_1.forward(x)
-        attn_out = self.attn.forward(norm_x0, training=training)
+        attn_out = self.attn.forward(
+            norm_x0,
+            training=training,
+            kv_cache=kv_cache,
+            start_pos=start_pos,
+        )
         x1 = x + attn_out
         self.cached_x1 = x1
 

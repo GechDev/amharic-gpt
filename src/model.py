@@ -25,7 +25,7 @@ Logits for Next-Token Prediction
 """
 
 import numpy as np
-from typing import Optional, Tuple, Dict, List
+from typing import Optional, Tuple, Dict, List, Any
 from src.config import GPTConfig
 from src.embeddings import GPTEmbeddings
 from src.transformer_block import TransformerBlock
@@ -113,14 +113,29 @@ class GPTLanguageModel:
         self.training = False
         return self
 
-    def forward(self, idx: np.ndarray, training: Optional[bool] = None) -> np.ndarray:
+    def init_kv_caches(self) -> List[Any]:
         """
-        Forward pass of the language model.
+        Initializes per-layer Key-Value caches for incremental autoregressive decoding (Lecture Slide 15).
+        """
+        from src.attention import KVCache
+        return [KVCache(max_seq_len=self.config.block_size) for _ in range(self.config.n_layer)]
+
+    def forward(
+        self,
+        idx: np.ndarray,
+        training: Optional[bool] = None,
+        kv_caches: Optional[List[Any]] = None,
+        start_pos: int = 0,
+    ) -> np.ndarray:
+        """
+        Forward pass of the language model with optional per-layer Key-Value caching.
         
         Args:
             idx (np.ndarray): Integer token IDs of shape (B, T), where T <= block_size.
             training (Optional[bool]): Explicit override for training mode. If None,
                                       uses self.training.
+            kv_caches (Optional[List[KVCache]]): Optional per-layer KV caches for incremental decoding.
+            start_pos (int): Starting position offset for positional embeddings.
             
         Returns:
             logits (np.ndarray): Next-token scores of shape (B, T, vocab_size).
@@ -129,16 +144,23 @@ class GPTLanguageModel:
             training = self.training
 
         B, T = idx.shape
-        assert T <= self.config.block_size, (
-            f"Cannot forward sequence of length {T}, block_size is {self.config.block_size}."
-        )
+        if kv_caches is None:
+            assert T <= self.config.block_size, (
+                f"Cannot forward sequence of length {T}, block_size is {self.config.block_size}."
+            )
 
         # 1. Embeddings: (B, T) -> (B, T, n_embd)
-        x = self.embeddings.forward(idx, training=training)
+        x = self.embeddings.forward(idx, start_pos=start_pos, training=training)
 
         # 2. Sequential pass through L Transformer blocks
-        for block in self.blocks:
-            x = block.forward(x, training=training)
+        for i, block in enumerate(self.blocks):
+            layer_cache = kv_caches[i] if kv_caches is not None else None
+            x = block.forward(
+                x,
+                training=training,
+                kv_cache=layer_cache,
+                start_pos=start_pos,
+            )
 
         # 3. Final LayerNorm
         x = self.ln_f.forward(x)
