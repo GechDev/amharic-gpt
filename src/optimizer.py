@@ -30,6 +30,56 @@ import numpy as np
 from typing import Dict, Tuple, Optional
 
 
+def get_cosine_schedule_with_warmup_lr(
+    step: int,
+    max_iters: int,
+    warmup_iters: int = 50,
+    lr_max: float = 3e-4,
+    lr_min: float = 3e-5
+) -> float:
+    """
+    Computes learning rate with linear warmup followed by cosine annealing decay.
+
+    Mathematical Formulation:
+    --------------------------
+    1. Linear Warmup Phase (step < warmup_iters):
+         The learning rate starts near 0.0 and ramps linearly up to lr_max:
+           lr_t = lr_max * (t / max(1, warmup_iters))
+         Rationale: Stabilizes initial gradients when random weights produce large updates.
+
+    2. Cosine Annealing Decay (warmup_iters <= step <= max_iters):
+         Progress ratio:
+           decay_ratio = (t - warmup_iters) / max(1, max_iters - warmup_iters)
+         Cosine factor:
+           coeff = 0.5 * (1.0 + cos(pi * decay_ratio))
+         Learning rate:
+           lr_t = lr_min + coeff * (lr_max - lr_min)
+         Rationale: Smooth, continuous monotonic descent from lr_max to lr_min without
+         abrupt step decay discontinuities.
+
+    3. Post-Schedule Cooldown (step > max_iters):
+         lr_t = lr_min
+
+    Args:
+        step (int): Current optimization step (1-indexed or 0-indexed).
+        max_iters (int): Total expected training steps.
+        warmup_iters (int): Number of initial warmup steps.
+        lr_max (float): Peak learning rate after warmup.
+        lr_min (float): Minimum terminal learning rate.
+
+    Returns:
+        float: Computed learning rate for the current step.
+    """
+    if step < warmup_iters:
+        return float(lr_max * float(step) / float(max(1, warmup_iters)))
+    if step > max_iters:
+        return float(lr_min)
+    decay_ratio = float(step - warmup_iters) / float(max(1, max_iters - warmup_iters))
+    decay_ratio = min(1.0, max(0.0, decay_ratio))
+    coeff = 0.5 * (1.0 + float(np.cos(np.pi * decay_ratio)))
+    return float(lr_min + coeff * (lr_max - lr_min))
+
+
 def clip_grad_norm(
     params_and_grads: Dict[str, Tuple[np.ndarray, np.ndarray]],
     max_norm: float = 1.0
@@ -123,7 +173,7 @@ class AdamW:
             # v_t = beta2 * v_{t-1} + (1 - beta2) * (g_t ** 2)
             v = self.v[name]
             v *= beta2
-            v += (1.0 - beta2) * (grad ** 2)
+            v += (1.0 - beta2) * (grad * grad)
 
             # Compute bias-corrected moments
             m_hat = m / bias_correction1
@@ -136,6 +186,10 @@ class AdamW:
             # Parameter update
             step_update = (lr / (np.sqrt(v_hat) + eps)) * m_hat
             param -= step_update
+
+    def set_lr(self, lr: float) -> None:
+        """Sets current learning rate."""
+        self.lr = float(lr)
 
     def state_dict(self) -> dict:
         """Serializes optimizer state."""

@@ -37,9 +37,15 @@ Sampling Strategies Explained:
 """
 
 import os
+import sys
 import argparse
 import numpy as np
 from typing import Optional, List
+
+# Add repository root to path
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
 from src.config import GPTConfig
 from src.tokenizer import AmharicTokenizer
@@ -139,6 +145,7 @@ def generate(
 def main():
     parser = argparse.ArgumentParser(description="Generate Amharic Text Autoregressively")
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints", help="Directory where model is saved")
+    parser.add_argument("--checkpoint_name", type=str, default="checkpoint_best", help="Checkpoint base name (e.g. checkpoint_best, checkpoint_latest, checkpoint)")
     parser.add_argument("--prompt", type=str, default="ሰላም", help="Amharic starting prompt")
     parser.add_argument("--max_new_tokens", type=int, default=80, help="Number of new tokens to generate")
     parser.add_argument("--temperature", type=float, default=0.8, help="Sampling temperature")
@@ -147,14 +154,22 @@ def main():
     parser.add_argument("--seed", type=int, default=42, help="Random seed for generation")
     args = parser.parse_args()
 
-    # Load checkpoint
-    if not os.path.exists(os.path.join(args.checkpoint_dir, "checkpoint_meta.json")):
-        print(f"Error: No checkpoint found in '{args.checkpoint_dir}'. Please run training first:")
-        print("  python -m src.train --max_iters 200")
-        return
+    # Determine checkpoint name and verify files exist
+    ckpt_name = args.checkpoint_name
+    meta_path = os.path.join(args.checkpoint_dir, f"{ckpt_name}_meta.json")
+    if not os.path.exists(meta_path):
+        # Fallback to "checkpoint" if checkpoint_best wasn't found
+        if os.path.exists(os.path.join(args.checkpoint_dir, "checkpoint_meta.json")):
+            ckpt_name = "checkpoint"
+            meta_path = os.path.join(args.checkpoint_dir, "checkpoint_meta.json")
+        else:
+            print(f"Error: No checkpoint found in '{args.checkpoint_dir}' (looked for {ckpt_name}_meta.json).")
+            print("Please run training first:")
+            print("  python -m src.train --max_iters 200")
+            return
 
     rng = np.random.RandomState(args.seed)
-    model, config, tokenizer, meta = load_checkpoint(args.checkpoint_dir, rng=rng)
+    model, config, tokenizer, meta = load_checkpoint(args.checkpoint_dir, name=ckpt_name, rng=rng)
     assert tokenizer is not None, "Tokenizer vocabulary missing from checkpoint."
 
     top_k_val = None if args.top_k <= 0 else args.top_k

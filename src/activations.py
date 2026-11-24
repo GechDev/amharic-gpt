@@ -52,7 +52,7 @@ class GELU:
         self.cached_x = x
 
         # u = sqrt(2/pi) * (x + 0.044715 * x^3)
-        inner = self.SQRT_2_OVER_PI * (x + self.COEFF * (x ** 3))
+        inner = self.SQRT_2_OVER_PI * (x + self.COEFF * (x * x * x))
         tanh_inner = np.tanh(inner)
         self.cached_tanh = tanh_inner
 
@@ -79,10 +79,10 @@ class GELU:
         t = self.cached_tanh
 
         # Derivative of the inner term with respect to x
-        du_dx = self.SQRT_2_OVER_PI * (1.0 + 3.0 * self.COEFF * (x ** 2))
+        du_dx = self.SQRT_2_OVER_PI * (1.0 + 3.0 * self.COEFF * (x * x))
 
         # Full derivative of GELU w.r.t x
-        dgelu_dx = 0.5 * (1.0 + t) + 0.5 * x * (1.0 - t ** 2) * du_dx
+        dgelu_dx = 0.5 * (1.0 + t) + 0.5 * x * (1.0 - t * t) * du_dx
 
         # Chain rule: dL/dx = d_out * dgelu_dx
         dx = d_out * dgelu_dx
