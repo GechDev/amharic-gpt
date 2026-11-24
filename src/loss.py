@@ -74,33 +74,32 @@ def cross_entropy_loss(
     sum_exp = np.sum(exp_shifted, axis=-1, keepdims=True)  # (B, T, 1)
     log_sum_exp = np.log(sum_exp) + max_logits             # (B, T, 1)
 
-    # Step 2: Extract target logit z_y
-    # Use advanced integer indexing to extract logits at target indices
-    # Shape of target_logits: (B, T)
-    batch_idx = np.arange(B)[:, None]
-    time_idx = np.arange(T)[None, :]
-    target_logits = logits[batch_idx, time_idx, targets]
-
-    # Per-token loss: L = log_sum_exp - z_y
-    # Shape: (B, T)
-    token_losses = (log_sum_exp.squeeze(-1) - target_logits)
-
-    # Step 3: Handle masking (if ignore_index is used)
+    # Step 2: Handle masking (if ignore_index is used)
     mask = (targets != ignore_index)
     num_valid = np.sum(mask)
 
     if num_valid == 0:
         return 0.0, np.zeros_like(logits)
 
+    # Safe targets: replace ignored indices with 0 to prevent out-of-bounds indexing
+    safe_targets = np.where(mask, targets, 0)
+
+    batch_idx = np.arange(B)[:, None]
+    time_idx = np.arange(T)[None, :]
+    target_logits = logits[batch_idx, time_idx, safe_targets]
+
+    # Per-token loss: L = log_sum_exp - z_y
+    # Shape: (B, T)
+    token_losses = (log_sum_exp.squeeze(-1) - target_logits)
     loss = float(np.sum(token_losses * mask) / num_valid)
 
-    # Step 4: Analytical gradient w.r.t logits
+    # Step 3: Analytical gradient w.r.t logits
     # p = softmax(logits)
     probs = exp_shifted / sum_exp  # (B, T, V)
 
     # Gradient: (p_j - delta_{j, y}) / num_valid
     d_logits = probs.copy()
-    d_logits[batch_idx, time_idx, targets] -= 1.0
+    d_logits[batch_idx, time_idx, safe_targets] -= 1.0
 
     # Zero out gradients for ignored positions
     if not np.all(mask):

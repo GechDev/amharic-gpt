@@ -135,8 +135,8 @@ class CausalSelfAttention:
     ):
         self.n_embd = n_embd
         self.head_dim = head_dim if head_dim is not None else n_embd
-        self.scale = 1.0 / np.sqrt(self.head_dim)
         self.dtype = np.dtype(dtype)
+        self.scale = self.dtype.type(1.0 / np.sqrt(self.head_dim))
 
         # Projections for Q, K, V
         self.W_q = init_weights((n_embd, n_embd), std=0.02, rng=rng, dtype=self.dtype)
@@ -349,8 +349,8 @@ class CausalMultiHeadAttention:
         self.n_embd = n_embd
         self.n_head = n_head
         self.head_dim = n_embd // n_head
-        self.scale = 1.0 / np.sqrt(self.head_dim)
         self.dtype = np.dtype(dtype)
+        self.scale = self.dtype.type(1.0 / np.sqrt(self.head_dim))
 
         # Residual projection scaling (GPT-2 standard: 1 / sqrt(2 * n_layer))
         w_o_std = 0.02 * residual_scale if residual_scale is not None else 0.02

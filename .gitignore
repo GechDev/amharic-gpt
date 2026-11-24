@@ -25,6 +25,12 @@ checkpoints/*.npz
 # Outputs
 outputs/*
 !outputs/.gitkeep
+!outputs/experiments.csv
+!outputs/samples_best_model.txt
+!outputs/corpus_report.md
+!outputs/corpus_report.json
+!outputs/tokenizer_comparison.md
+!outputs/tokenizer_comparison.json
 
 # Large raw datasets (keep gitkeep and sample)
 data/raw/*

@@ -1,0 +1,133 @@
+{
+  "total_characters": 4009,
+  "total_words": 741,
+  "average_word_length": 4.32,
+  "unique_characters": 170,
+  "unique_fidel_count": 162,
+  "unique_ethiopic_all_count": 166,
+  "top_20_characters": [
+    {
+      "char": " ",
+      "count": 670,
+      "percentage": 16.71
+    },
+    {
+      "char": "ን",
+      "count": 162,
+      "percentage": 4.04
+    },
+    {
+      "char": "ት",
+      "count": 158,
+      "percentage": 3.94
+    },
+    {
+      "char": "\n",
+      "count": 140,
+      "percentage": 3.49
+    },
+    {
+      "char": "ር",
+      "count": 111,
+      "percentage": 2.77
+    },
+    {
+      "char": "ው",
+      "count": 104,
+      "percentage": 2.59
+    },
+    {
+      "char": "የ",
+      "count": 100,
+      "percentage": 2.49
+    },
+    {
+      "char": "መ",
+      "count": 91,
+      "percentage": 2.27
+    },
+    {
+      "char": "ል",
+      "count": 90,
+      "percentage": 2.24
+    },
+    {
+      "char": "በ",
+      "count": 89,
+      "percentage": 2.22
+    },
+    {
+      "char": "ና",
+      "count": 88,
+      "percentage": 2.2
+    },
+    {
+      "char": "ስ",
+      "count": 87,
+      "percentage": 2.17
+    },
+    {
+      "char": "።",
+      "count": 85,
+      "percentage": 2.12
+    },
+    {
+      "char": "ለ",
+      "count": 81,
+      "percentage": 2.02
+    },
+    {
+      "char": "አ",
+      "count": 71,
+      "percentage": 1.77
+    },
+    {
+      "char": "ም",
+      "count": 70,
+      "percentage": 1.75
+    },
+    {
+      "char": "ነ",
+      "count": 60,
+      "percentage": 1.5
+    },
+    {
+      "char": "ተ",
+      "count": 58,
+      "percentage": 1.45
+    },
+    {
+      "char": "ች",
+      "count": 54,
+      "percentage": 1.35
+    },
+    {
+      "char": "ያ",
+      "count": 52,
+      "percentage": 1.3
+    }
+  ],
+  "raw_documents_count": 71,
+  "duplicates_removed": 0,
+  "dropped_low_ratio_documents": 0,
+  "splits": {
+    "train": {
+      "characters": 3859,
+      "words": 717,
+      "documents": 64,
+      "percentage": 88.81
+    },
+    "val": {
+      "characters": 311,
+      "words": 58,
+      "documents": 4,
+      "percentage": 7.16
+    },
+    "test": {
+      "characters": 175,
+      "words": 34,
+      "documents": 3,
+      "percentage": 4.03
+    }
+  }
+}

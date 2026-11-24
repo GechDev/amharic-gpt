@@ -1,0 +1,55 @@
+=== Amharic GPT Generation Log ===
+Checkpoint: outputs/small_amharic_run/checkpoints/checkpoint_best
+Parameters: 3,284,147
+Settings: greedy=False, T=0.8, top_k=20, top_p=0.9, rep_penalty=1.1, KV_cache=True, seed=42
+===================================
+
+--- Prompt: "ሰላም" ---
+Sample 1 (seed=42):
+ሰላም ይን መመለን የህንና ማረት አር መረት የም እም ማል።
+<EOS>
+<EOS>
+<EOS>
+እው።
+<EO
+[Sanity Metrics] Ethiopic Ratio: 0.633 | Repeated Trigrams: 0.246 | Perplexity: 6.16
+
+--- Prompt: "ኢትዮጵያ" ---
+Sample 1 (seed=43):
+ኢትዮጵያ እች በይታል የተን ለት አር የው።
+በም መጠበመለር የጥንና መረግራን ወቅር አፍት እና አስራረጃ
+[Sanity Metrics] Ethiopic Ratio: 1.000 | Repeated Trigrams: 0.016 | Perplexity: 14.22
+
+--- Prompt: "ትምህርት" ---
+Sample 1 (seed=44):
+ትምህርት መት ነው አስራውቀር በደን የሰው አግል።
+<EOS>
+<EOS>
+<EOS>
+በትምም አስ መፍምር መረ
+[Sanity Metrics] Ethiopic Ratio: 0.712 | Repeated Trigrams: 0.206 | Perplexity: 8.28
+
+--- Prompt: "የአዲስ አበባ" ---
+Sample 1 (seed=45):
+የአዲስ አበባገር ለም ለመል።
+<EOS>
+<EOS>
+<EOS>
+<EOS>
+<EOS>
+<EOS>
+<EOS>
+ት በጥን ለ
+[Sanity Metrics] Ethiopic Ratio: 0.364 | Repeated Trigrams: 0.530 | Perplexity: 3.51
+
+--- Prompt: "ታሪክ" ---
+Sample 1 (seed=46):
+ታሪክል።
+<EOS>
+<EOS>
+<EOS>
+<EOS>
+<EOS>
+ይምህ መርገ ያ የህ ማል አለት መር የህ የ
+[Sanity Metrics] Ethiopic Ratio: 0.490 | Repeated Trigrams: 0.426 | Perplexity: 5.04
+

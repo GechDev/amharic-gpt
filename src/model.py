@@ -64,6 +64,7 @@ class GPTLanguageModel:
             n_embd=config.n_embd,
             rng=rng,
             dropout=config.dropout,
+            use_pos_emb=config.use_pos_emb,
             dtype=dt,
         )
 

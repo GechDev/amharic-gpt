@@ -154,8 +154,10 @@ class GPTEmbeddings:
         n_embd: int,
         rng: Optional[np.random.RandomState] = None,
         dropout: float = 0.0,
+        use_pos_emb: bool = True,
         dtype: Any = np.float32,
     ):
+        self.use_pos_emb = use_pos_emb
         self.token_emb = TokenEmbedding(vocab_size, n_embd, rng=rng, dtype=dtype)
         self.pos_emb = PositionalEmbedding(block_size, n_embd, rng=rng, dtype=dtype)
         self.dropout = Dropout(p=dropout, rng=rng)
@@ -173,26 +175,29 @@ class GPTEmbeddings:
         """
         B, T = token_ids.shape
         tok_out = self.token_emb.forward(token_ids)
-        pos_out = self.pos_emb.forward(T, start_pos=start_pos)
-        # Elementwise addition of token semantics and position index
-        out = tok_out + pos_out
+        if self.use_pos_emb:
+            pos_out = self.pos_emb.forward(T, start_pos=start_pos)
+            out = tok_out + pos_out
+        else:
+            out = tok_out
         return self.dropout.forward(out, training=training)
 
     def backward(self, d_out: np.ndarray) -> None:
         """
         d_out: shape (B, T, n_embd)
-        Backpropagates gradient through dropout, then to both token and positional embedding tables.
+        Backpropagates gradient through dropout, then to token (and optionally positional) embedding tables.
         """
         d_out = self.dropout.backward(d_out)
         self.token_emb.backward(d_out)
-        self.pos_emb.backward(d_out)
+        if self.use_pos_emb:
+            self.pos_emb.backward(d_out)
 
     def get_params_and_grads(self) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
         """Returns parameter arrays and corresponding gradient arrays for optimization."""
-        return {
-            "wte": (self.token_emb.W, self.token_emb.grad_W),
-            "wpe": (self.pos_emb.W, self.pos_emb.grad_W),
-        }
+        params = {"wte": (self.token_emb.W, self.token_emb.grad_W)}
+        if self.use_pos_emb:
+            params["wpe"] = (self.pos_emb.W, self.pos_emb.grad_W)
+        return params
 
     def zero_grad(self) -> None:
         """Zeros out gradients before a new backward pass."""

@@ -57,3 +57,40 @@ def test_cross_entropy_gradient_numerical():
                 d_logits_num[b, t, v] = (loss_pos - loss_neg) / (2 * eps)
 
     assert np.allclose(d_logits_analytical, d_logits_num, atol=1e-5)
+
+
+def test_cross_entropy_ignore_index():
+    """
+    Verifies that target positions with ignore_index:
+    1. Do not contribute to the loss scalar.
+    2. Receive exactly zero analytical gradient in d_logits.
+    3. Analytical d_logits matches numerical finite differences on valid tokens.
+    """
+    B, T, V = 2, 4, 5
+    logits = np.random.randn(B, T, V).astype(np.float64)
+    # Mask position (0, 1) and (1, 3) with -100
+    targets = np.array([[2, -100, 4, 1], [0, 3, 2, -100]], dtype=np.int64)
+
+    loss, d_logits = cross_entropy_loss(logits, targets, ignore_index=-100)
+
+    # 1. Ignored positions must have zero gradient
+    assert np.all(d_logits[0, 1, :] == 0.0)
+    assert np.all(d_logits[1, 3, :] == 0.0)
+
+    # 2. Finite difference gradient check on valid tokens
+    eps = 1e-6
+    for b in [0, 1]:
+        for t in [0, 2]:  # valid positions
+            for v in range(V):
+                l_pos = logits.copy()
+                l_neg = logits.copy()
+                l_pos[b, t, v] += eps
+                l_neg[b, t, v] -= eps
+
+                loss_pos, _ = cross_entropy_loss(l_pos, targets, ignore_index=-100)
+                loss_neg, _ = cross_entropy_loss(l_neg, targets, ignore_index=-100)
+                g_num = (loss_pos - loss_neg) / (2.0 * eps)
+                g_anal = d_logits[b, t, v]
+
+                assert np.isclose(g_anal, g_num, atol=1e-5)
+

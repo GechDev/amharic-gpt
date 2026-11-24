@@ -125,7 +125,7 @@ def init_weights(
     if rng is None:
         rng = np.random.RandomState(42)
     dt = np.dtype(dtype)
-    return rng.randn(*shape).astype(dt) * std
+    return (rng.randn(*shape) * std).astype(dt)
 
 
 def init_zeros(shape: Tuple[int, ...], dtype: Any = np.float32) -> np.ndarray:

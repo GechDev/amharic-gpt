@@ -1,0 +1,10 @@
+exp_id,name,tokenizer,vocab_size,n_layer,n_head,n_embd,use_pos_emb,tied,dropout,seed,params,train_loss,val_loss,val_ppl,val_bpc,step_time_sec
+EXP-01,Baseline (Seed 42),char-176,176,2,2,64,True,True,0.0,42,115632,4.5082,4.5118,91.08,6.509,0.0925
+EXP-02,Baseline (Seed 1337 - Noise check),char-176,176,2,2,64,True,True,0.0,1337,115632,4.4809,4.5079,90.73,6.504,0.0863
+EXP-03,BPE-300 Subword,bpe-300,300,2,2,64,True,True,0.0,42,123692,5.2523,5.3271,205.84,5.61,0.1069
+EXP-04,BPE-600 Subword,bpe-600,600,2,2,64,True,True,0.0,42,143192,5.9857,6.0208,411.9,5.614,0.1006
+EXP-05,Without Positional Embeddings (No-WPE),char-176,176,2,2,64,False,True,0.0,42,111536,4.4672,4.4772,87.99,6.459,0.0869
+EXP-06,Deeper Model (4 Layers),char-176,176,4,2,64,True,True,0.0,42,215600,4.4349,4.4865,88.81,6.473,0.1444
+EXP-07,Wider Multi-Head (4 Heads),char-176,176,2,4,64,True,True,0.0,42,115632,4.5083,4.5118,91.09,6.509,0.1155
+EXP-08,Untied Embeddings (Head != WTE),char-176,176,2,2,64,True,False,0.0,42,126896,4.3878,4.4656,86.97,6.442,0.1041
+EXP-09,With Dropout (p=0.1),char-176,176,2,2,64,True,True,0.1,42,115632,4.5062,4.542,93.88,6.553,0.1417

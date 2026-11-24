@@ -44,8 +44,8 @@ class LayerNorm:
 
     def __init__(self, n_embd: int, eps: float = 1e-5, dtype: Any = np.float32):
         self.n_embd = n_embd
-        self.eps = eps
         self.dtype = np.dtype(dtype)
+        self.eps = self.dtype.type(eps)
 
         # Trainable parameters
         self.gamma = np.ones(n_embd, dtype=self.dtype)

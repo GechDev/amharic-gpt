@@ -42,6 +42,7 @@ class GPTConfig:
     eps: float = 1e-8
     ln_eps: float = 1e-5
     tie_embeddings: bool = True
+    use_pos_emb: bool = True
     dtype: str = "float32"
 
     def __post_init__(self):
