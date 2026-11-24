@@ -184,7 +184,14 @@ def load_checkpoint(
     tokenizer = None
     vocab_path = os.path.join(checkpoint_dir, "vocab.json")
     if os.path.exists(vocab_path):
-        tokenizer = AmharicTokenizer(vocab_file=vocab_path)
+        with open(vocab_path, "r", encoding="utf-8") as f:
+            vdata = json.load(f)
+        if vdata.get("tokenizer_type") == "bpe":
+            from src.bpe_tokenizer import BPETokenizer
+            tokenizer = BPETokenizer(vocab_file=vocab_path)
+        else:
+            tokenizer = AmharicTokenizer(vocab_file=vocab_path)
+
         if tokenizer.vocab_size != config.vocab_size:
             raise ValueError(
                 f"Vocabulary size mismatch: tokenizer has {tokenizer.vocab_size} tokens, "

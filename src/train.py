@@ -22,6 +22,7 @@ from typing import Optional, Dict
 
 from src.config import GPTConfig
 from src.tokenizer import AmharicTokenizer
+from src.bpe_tokenizer import BPETokenizer
 from src.data import AmharicDataset, create_datasets_from_text, preprocess_file
 from src.model import GPTLanguageModel
 from src.loss import cross_entropy_loss
@@ -170,6 +171,8 @@ def main():
     parser.add_argument("--eval_interval", type=int, default=50, help="Evaluation interval")
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints", help="Directory to save checkpoints")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
+    parser.add_argument("--tokenizer", type=str, default="char", choices=["char", "bpe"], help="Tokenizer type: char or bpe")
+    parser.add_argument("--bpe_vocab_size", type=int, default=500, help="Target vocabulary size for BPE tokenizer")
     args = parser.parse_args()
 
     # Preprocess if data files do not exist
@@ -186,8 +189,15 @@ def main():
         val_text = f.read()
 
     # Build tokenizer
-    tokenizer = AmharicTokenizer()
-    tokenizer.build_vocab(train_text + val_text)
+    if args.tokenizer == "bpe":
+        print(f"[Tokenizer] Training BPE tokenizer on TRAIN split only (target vocab_size={args.bpe_vocab_size})...")
+        tokenizer = BPETokenizer()
+        tokenizer.train(train_text, target_vocab_size=args.bpe_vocab_size)
+    else:
+        print("[Tokenizer] Building Character-level tokenizer...")
+        tokenizer = AmharicTokenizer()
+        tokenizer.build_vocab(train_text + val_text)
+
     os.makedirs(os.path.dirname(os.path.abspath(args.vocab_path)), exist_ok=True)
     tokenizer.save_vocab(args.vocab_path)
 

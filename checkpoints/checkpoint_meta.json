@@ -1,10 +1,10 @@
 {
   "format_version": 1,
-  "config_hash": "b20b470762405aa8f39bca1ddc7bbe875c172e7e667924c95595b370117c6aef",
+  "config_hash": "b60b041abc7c2f58f49e05261451d8a05035334534244e9f1d57f3628ab6424b",
   "step": 200,
-  "val_loss": 3.334961649957724,
+  "val_loss": 3.286304618923664,
   "config": {
-    "vocab_size": 174,
+    "vocab_size": 179,
     "block_size": 32,
     "n_embd": 64,
     "n_head": 2,
