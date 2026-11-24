@@ -11,7 +11,7 @@ This project is configured to use natural Amharic text corpora for educational l
   - [Amharic Wikipedia Dumps](https://dumps.wikimedia.org/amwiki/)
 - **License**: Creative Commons Attribution 4.0 International (CC BY 4.0) / Public Domain / Open Access
 - **Language**: Amharic (አማርኛ) - Ethiopic / Ge'ez script (Unicode U+1200 - U+137F)
-- **Sample Corpus**: A bundled curated corpus of Amharic prose covering news, education, history, science, and everyday conversation is provided at `data/raw/sample_amharic.txt` (~25,000+ characters) for immediate out-of-the-box local verification and educational experiments.
+- **Sample Corpus**: A bundled curated corpus of Amharic prose covering news, education, history, science, and everyday conversation is provided at `data/raw/sample_amharic.txt` (exact size: 3,940 characters, 741 words, 71 lines, 170 unique characters) for immediate out-of-the-box local verification and educational experiments.
 
 ## 2. Obtaining Larger Datasets
 

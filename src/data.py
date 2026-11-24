@@ -227,9 +227,8 @@ class AmharicDataset:
         """
         max_idx = len(self)
         if rng is None:
-            indices = np.random.randint(0, max_idx, size=batch_size)
-        else:
-            indices = rng.randint(0, max_idx, size=batch_size)
+            rng = np.random.RandomState(42)
+        indices = rng.randint(0, max_idx, size=batch_size)
 
         # Batch inputs and targets
         X = np.empty((batch_size, self.block_size), dtype=np.int64)

@@ -113,9 +113,12 @@ def init_weights(shape: Tuple[int, ...], std: float = 0.02, rng: Optional[np.ran
     """
     Initializes weights using a Gaussian (normal) distribution.
     Following the GPT-2 specification: N(0, 0.02).
+
+    Uses an explicit NumPy RandomState instance to ensure reproducibility.
+    Global np.random state is never used.
     """
     if rng is None:
-        return np.random.randn(*shape).astype(np.float32) * std
+        rng = np.random.RandomState(42)
     return rng.randn(*shape).astype(np.float32) * std
 
 

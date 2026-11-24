@@ -17,8 +17,9 @@ env/
 # Jupyter
 .ipynb_checkpoints/
 
-# Checkpoint archives (keep sample checkpoints if needed)
+# Checkpoint archives (keep sample baseline checkpoint)
 checkpoints/*.npz
+!checkpoints/checkpoint.npz
 !checkpoints/.gitkeep
 
 # Outputs

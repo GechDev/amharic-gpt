@@ -1,6 +1,8 @@
 {
-  "step": 50,
-  "val_loss": 3.740893672689725,
+  "format_version": 1,
+  "config_hash": "b20b470762405aa8f39bca1ddc7bbe875c172e7e667924c95595b370117c6aef",
+  "step": 200,
+  "val_loss": 3.334961649957724,
   "config": {
     "vocab_size": 174,
     "block_size": 32,

@@ -46,7 +46,7 @@ This project implements a complete generative language model for Amharic from fi
 
 ### Source & Description
 - **Recommended Corpus**: Publicly available Amharic news and encyclopedic corpora, such as the [IsraelAbebe Amharic News Dataset](https://github.com/IsraelAbebe/Amharic-News-Text-Classification-Dataset) and [Amharic Wikipedia](https://dumps.wikimedia.org/amwiki/).
-- **Bundled Corpus**: An authentic, diverse sample corpus is included at `data/raw/sample_amharic.txt` (~25,000+ characters, 70+ topics) covering culture, education, science, history, computing, and everyday Ethiopian life.
+- **Bundled Corpus**: An authentic, diverse sample corpus is included at `data/raw/sample_amharic.txt` (exact size: 3,940 characters, 741 words, 71 lines, 170 unique characters) covering culture, education, science, history, computing, and everyday Ethiopian life.
 - **License**: Creative Commons Attribution 4.0 (CC BY 4.0) / Open Access.
 
 ### Preprocessing Pipeline (`src/data.py`)
@@ -305,7 +305,7 @@ amharic-gpt/
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/amharic-gpt.git
+git clone https://github.com/GechDev/amharic-gpt.git
 cd amharic-gpt
 
 # Install requirements
@@ -343,7 +343,7 @@ python -m src.generate --prompt "ትምህርት" --max_new_tokens 80 --temperat
 ```
 
 ### 4. Running the Tests
-Run the 38 unit tests verifying all mathematical operations and gradients:
+Run the 43 unit tests verifying all mathematical operations, gradient backpropagation, checkpoint integrity, and generation:
 ```bash
 pytest tests/ -v
 ```
@@ -352,13 +352,41 @@ pytest tests/ -v
 
 ## Example Output
 
-Prompt: **`"ሰላም"`** (Peace / Hello)
+Real generation output produced by the trained baseline model (`tiny` config, 124,590 parameters) after 200 training steps (final training loss: 2.7511, validation loss: 3.3350):
 
-Generated output after 200 training steps on sample corpus:
+### 1. Temperature Sampling with Top-k Filtering
+```bash
+python -m src.generate --seed 42 --checkpoint_dir checkpoints --prompt "ሰላም" --max_new_tokens 60 --temperature 0.8 --top_k 20
 ```
-ሰላም ለኢትዮጵያ ሀገራችን ይሁን።
-ትምህርት ለሰው ልጅ እድገት ወሳኝ መሠረት ነው።
-እውቀት ኃይል ነው፤ የተማረ ትውልድ ሀገሩን ይለውጣል።
+**Output:**
+```
+[Tokenizer] Loaded vocabulary from checkpoints\vocab.json (174 tokens).
+[Checkpoint] Successfully loaded checkpoint from checkpoints (step 200).
+
+[Generation] Prompt: "ሰላም"
+[Generation] Strategy: Sampling (T=0.8, top_k=20) | Seed: 42
+--------------------------------------------------
+Generated Text:
+ሰላም ነው የተር ትተት አየቋ የያት።
+የተድው። መን የአንቋ የር ለት ንተበስና የማንንነመን ያመልም 
+--------------------------------------------------
+```
+
+### 2. Deterministic Greedy Generation
+```bash
+python -m src.generate --seed 42 --checkpoint_dir checkpoints --prompt "ሰላም" --max_new_tokens 60 --greedy
+```
+**Output:**
+```
+[Tokenizer] Loaded vocabulary from checkpoints\vocab.json (174 tokens).
+[Checkpoint] Successfully loaded checkpoint from checkpoints (step 200).
+
+[Generation] Prompt: "ሰላም"
+[Generation] Strategy: Greedy | Seed: 42
+--------------------------------------------------
+Generated Text:
+ሰላም የተር የተርት የተመረት የተር የተለም የተር የተርት የተርት የተርት የተርት የተርት የተርት የ
+--------------------------------------------------
 ```
 
 ---

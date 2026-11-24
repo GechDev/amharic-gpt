@@ -33,7 +33,8 @@ def estimate_loss(
     model: GPTLanguageModel,
     dataset: AmharicDataset,
     eval_iters: int = 10,
-    batch_size: int = 4
+    batch_size: int = 4,
+    rng: Optional[np.random.RandomState] = None
 ) -> float:
     """
     Evaluates the mean loss over a given dataset without updating weights.
@@ -46,7 +47,7 @@ def estimate_loss(
     """
     losses = []
     for _ in range(eval_iters):
-        X, Y = dataset.get_batch(batch_size=batch_size)
+        X, Y = dataset.get_batch(batch_size=batch_size, rng=rng)
         logits = model.forward(X)
         loss, _ = cross_entropy_loss(logits, Y)
         losses.append(loss)
@@ -64,8 +65,9 @@ def train(
     eval_interval: int = 50,
     eval_iters: int = 10,
     max_grad_norm: float = 1.0,
-    checkpoint_dir: Optional[str] = "checkpoints",
+    checkpoint_dir: Optional[str] = None,
     tokenizer: Optional[AmharicTokenizer] = None,
+    rng: Optional[np.random.RandomState] = None,
     verbose: bool = True
 ) -> Dict[str, list]:
     """
@@ -74,6 +76,9 @@ def train(
     Returns:
         history (dict): Dictionary with recorded 'train_loss', 'val_loss', and 'steps'.
     """
+    if rng is None:
+        rng = np.random.RandomState(42)
+
     params_and_grads = model.get_params_and_grads()
     optimizer = AdamW(
         params_and_grads=params_and_grads,
@@ -95,7 +100,7 @@ def train(
         step_start = time.time()
 
         # 1. Load batch
-        X, Y = train_dataset.get_batch(batch_size=batch_size)
+        X, Y = train_dataset.get_batch(batch_size=batch_size, rng=rng)
 
         # 2. Forward pass
         logits = model.forward(X)
@@ -122,7 +127,7 @@ def train(
             val_loss_str = "N/A"
             val_loss = None
             if val_dataset is not None:
-                val_loss = estimate_loss(model, val_dataset, eval_iters=eval_iters, batch_size=batch_size)
+                val_loss = estimate_loss(model, val_dataset, eval_iters=eval_iters, batch_size=batch_size, rng=rng)
                 val_loss_str = f"{val_loss:.4f}"
 
             history["steps"].append(step)
@@ -164,6 +169,7 @@ def main():
     parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--eval_interval", type=int, default=50, help="Evaluation interval")
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints", help="Directory to save checkpoints")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     args = parser.parse_args()
 
     # Preprocess if data files do not exist
@@ -199,7 +205,8 @@ def main():
         block_size=config.block_size
     )
 
-    model = GPTLanguageModel(config)
+    rng = np.random.RandomState(args.seed)
+    model = GPTLanguageModel(config, rng=rng)
     train(
         model=model,
         train_dataset=train_ds,
@@ -210,6 +217,7 @@ def main():
         eval_interval=args.eval_interval,
         checkpoint_dir=args.checkpoint_dir,
         tokenizer=tokenizer,
+        rng=rng,
     )
 
 

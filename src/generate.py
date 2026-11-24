@@ -15,7 +15,7 @@ Autoregressive means the model generates text token by token:
     4. Apply temperature scaling: next_logits = next_logits / temperature
     5. Optionally filter to top_k tokens
     6. Convert to probabilities via softmax: probs = softmax(next_logits)
-    7. Select next token (argmax for greedy, or np.random.choice for sampling)
+    7. Select next token (argmax for greedy, or rng.choice for sampling)
     8. Append next token: idx = np.concatenate([idx, [[next_token]]], axis=1)
     9. If next_token is <EOS>, stop generation early.
     ↓
@@ -115,11 +115,10 @@ def generate(
             # Convert logits to probabilities
             probs = softmax(next_logits, axis=-1)
 
-            # Sample categorical distribution
+            # Sample categorical distribution using explicit RNG
             if rng is None:
-                next_token_id = int(np.random.choice(len(probs), p=probs))
-            else:
-                next_token_id = int(rng.choice(len(probs), p=probs))
+                rng = np.random.RandomState(42)
+            next_token_id = int(rng.choice(len(probs), p=probs))
 
         # Check early stopping at EOS
         if stop_at_eos and next_token_id == eos_id:
@@ -142,6 +141,7 @@ def main():
     parser.add_argument("--temperature", type=float, default=0.8, help="Sampling temperature")
     parser.add_argument("--top_k", type=int, default=20, help="Top-k filtering (0 to disable)")
     parser.add_argument("--greedy", action="store_true", help="Use greedy argmax decoding")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for generation")
     args = parser.parse_args()
 
     # Load checkpoint
@@ -150,13 +150,14 @@ def main():
         print("  python -m src.train --max_iters 200")
         return
 
-    model, config, tokenizer, meta = load_checkpoint(args.checkpoint_dir)
+    rng = np.random.RandomState(args.seed)
+    model, config, tokenizer, meta = load_checkpoint(args.checkpoint_dir, rng=rng)
     assert tokenizer is not None, "Tokenizer vocabulary missing from checkpoint."
 
     top_k_val = None if args.top_k <= 0 else args.top_k
 
     print(f"\n[Generation] Prompt: \"{args.prompt}\"")
-    print(f"[Generation] Strategy: {'Greedy' if args.greedy else f'Sampling (T={args.temperature}, top_k={top_k_val})'}")
+    print(f"[Generation] Strategy: {'Greedy' if args.greedy else f'Sampling (T={args.temperature}, top_k={top_k_val})'} | Seed: {args.seed}")
     print("-" * 50)
 
     output = generate(
@@ -167,6 +168,7 @@ def main():
         temperature=args.temperature,
         top_k=top_k_val,
         greedy=args.greedy,
+        rng=rng,
     )
 
     print("Generated Text:")
