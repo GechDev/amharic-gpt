@@ -210,6 +210,17 @@ def load_checkpoint(
 
     # 3. Reconstruct configuration and model if model not provided
     if model is None:
+        # Backward compatibility for checkpoints saved prior to tie_embeddings configuration field
+        if "tie_embeddings" not in config_dict:
+            weights_file = metadata.get("weights_file", f"{name}.npz")
+            npz_check_path = os.path.join(checkpoint_dir, weights_file)
+            if os.path.exists(npz_check_path):
+                with np.load(npz_check_path) as check_archive:
+                    if "lm_head.W" in check_archive.files:
+                        config_dict["tie_embeddings"] = False
+                    else:
+                        config_dict["tie_embeddings"] = True
+
         config = GPTConfig.from_dict(config_dict)
         # Use an isolated dummy RNG state so passed rng is never advanced by init_weights
         model = GPTLanguageModel(config, rng=np.random.RandomState(0))
