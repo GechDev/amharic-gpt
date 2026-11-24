@@ -18,12 +18,15 @@ class GPTConfig:
         n_head (int): Number of attention heads.
         n_layer (int): Number of stacked Transformer blocks.
         ffn_dim (int): Inner dimension of Feed-Forward Network (typically 4 * n_embd).
-        dropout (float): Dropout probability (0.0 for deterministic NumPy inference).
+        dropout (float): Dropout probability (default 0.0 for deterministic baseline).
         learning_rate (float): Learning rate for optimizer.
         weight_decay (float): L2 regularization weight decay factor.
         beta1 (float): First moment exponential decay for Adam.
         beta2 (float): Second moment exponential decay for Adam.
-        eps (float): Numerical stability constant (epsilon).
+        eps (float): Numerical stability constant for Adam optimizer (default 1e-8).
+        ln_eps (float): Numerical stability constant for Layer Normalization (default 1e-5).
+        tie_embeddings (bool): Whether to tie token embeddings and LM head projection weights.
+        dtype (str): Numerical data type ("float32" or "float64").
     """
     vocab_size: int = 256
     block_size: int = 128
@@ -37,6 +40,9 @@ class GPTConfig:
     beta1: float = 0.9
     beta2: float = 0.999
     eps: float = 1e-8
+    ln_eps: float = 1e-5
+    tie_embeddings: bool = True
+    dtype: str = "float32"
 
     def __post_init__(self):
         # Validate that embedding dimension is divisible by number of heads
@@ -51,6 +57,12 @@ class GPTConfig:
     def head_dim(self) -> int:
         """Dimensionality of each individual attention head."""
         return self.n_embd // self.n_head
+
+    @property
+    def np_dtype(self):
+        """Returns the corresponding NumPy floating-point data type."""
+        import numpy as np
+        return np.float64 if self.dtype == "float64" else np.float32
 
     @classmethod
     def get_tiny_config(cls, vocab_size: int = 128) -> "GPTConfig":
@@ -67,6 +79,9 @@ class GPTConfig:
             ffn_dim=256,
             dropout=0.0,
             learning_rate=1e-3,
+            ln_eps=1e-5,
+            tie_embeddings=False,
+            dtype="float32",
         )
 
     @classmethod
@@ -83,6 +98,9 @@ class GPTConfig:
             ffn_dim=1024,
             dropout=0.0,
             learning_rate=3e-4,
+            ln_eps=1e-5,
+            tie_embeddings=False,
+            dtype="float32",
         )
 
     def to_dict(self) -> dict:
@@ -90,7 +108,10 @@ class GPTConfig:
 
     @classmethod
     def from_dict(cls, data: dict) -> "GPTConfig":
-        return cls(**data)
+        import dataclasses
+        valid_keys = {f.name for f in dataclasses.fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in valid_keys}
+        return cls(**filtered)
 
     def save(self, file_path: str) -> None:
         """Save configuration to JSON file."""

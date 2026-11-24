@@ -17,8 +17,8 @@ Intuition: Attention vs Feed-Forward Network:
 """
 
 import numpy as np
-from typing import Optional, Tuple, Dict
-from src.activations import GELU
+from typing import Optional, Tuple, Dict, Any
+from src.activations import GELU, Dropout
 from src.math_utils import init_weights, init_zeros
 
 
@@ -36,25 +36,38 @@ class FeedForward:
     Trainable Parameters:
       W1: shape (n_embd, ffn_dim), initialized with N(0, 0.02)
       b1: shape (ffn_dim,), initialized with 0
-      W2: shape (ffn_dim, n_embd), initialized with N(0, 0.02)
+      W2: shape (ffn_dim, n_embd), initialized with N(0, 0.02 * residual_scale)
       b2: shape (n_embd,), initialized with 0
     """
 
-    def __init__(self, n_embd: int, ffn_dim: Optional[int] = None, rng: Optional[np.random.RandomState] = None):
+    def __init__(
+        self,
+        n_embd: int,
+        ffn_dim: Optional[int] = None,
+        rng: Optional[np.random.RandomState] = None,
+        residual_scale: Optional[float] = None,
+        dropout: float = 0.0,
+        dtype: Any = np.float32,
+    ):
         if ffn_dim is None or ffn_dim <= 0:
             ffn_dim = 4 * n_embd
 
         self.n_embd = n_embd
         self.ffn_dim = ffn_dim
+        self.dtype = np.dtype(dtype)
+
+        # Residual projection scaling (GPT-2 standard: 1 / sqrt(2 * n_layer))
+        w2_std = 0.02 * residual_scale if residual_scale is not None else 0.02
 
         # Weights and biases
-        self.W1 = init_weights((n_embd, ffn_dim), std=0.02, rng=rng)
-        self.b1 = init_zeros((ffn_dim,))
-        self.W2 = init_weights((ffn_dim, n_embd), std=0.02, rng=rng)
-        self.b2 = init_zeros((n_embd,))
+        self.W1 = init_weights((n_embd, ffn_dim), std=0.02, rng=rng, dtype=self.dtype)
+        self.b1 = init_zeros((ffn_dim,), dtype=self.dtype)
+        self.W2 = init_weights((ffn_dim, n_embd), std=w2_std, rng=rng, dtype=self.dtype)
+        self.b2 = init_zeros((n_embd,), dtype=self.dtype)
 
-        # GELU activation instance
+        # GELU activation and Dropout instances
         self.gelu = GELU()
+        self.dropout = Dropout(p=dropout, rng=rng)
 
         # Gradients
         self.grad_W1 = np.zeros_like(self.W1)
@@ -67,7 +80,7 @@ class FeedForward:
         self.cached_hidden: Optional[np.ndarray] = None
         self.cached_act: Optional[np.ndarray] = None
 
-    def forward(self, X: np.ndarray) -> np.ndarray:
+    def forward(self, X: np.ndarray, training: bool = True) -> np.ndarray:
         """
         Forward pass for FFN.
         
@@ -88,6 +101,7 @@ class FeedForward:
         # Second linear projection: ffn_dim -> n_embd
         # (B, T, ffn_dim) @ (ffn_dim, n_embd) + (n_embd,) -> (B, T, n_embd)
         out = act @ self.W2 + self.b2
+        out = self.dropout.forward(out, training=training)
         return out
 
     def backward(self, d_out: np.ndarray) -> np.ndarray:
@@ -98,6 +112,9 @@ class FeedForward:
         Returns dX:  gradient w.r.t input X of shape (B, T, n_embd)
         """
         assert self.cached_X is not None and self.cached_act is not None, "Call forward first."
+
+        # Backward through dropout
+        d_out = self.dropout.backward(d_out)
 
         X = self.cached_X
         act = self.cached_act

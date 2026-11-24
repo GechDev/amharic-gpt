@@ -76,6 +76,9 @@ def generate(
     Returns:
         generated_text (str): Complete generated text including prompt.
     """
+    if hasattr(model, "eval"):
+        model.eval()
+
     # 1. Encode prompt
     prompt_ids = tokenizer.encode(prompt, add_special_tokens=False)
     if len(prompt_ids) == 0:

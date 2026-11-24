@@ -27,7 +27,7 @@ completely eliminating the vanishing gradient problem!
 """
 
 import numpy as np
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict, Any
 from src.normalization import LayerNorm
 from src.attention import CausalMultiHeadAttention
 from src.feed_forward import FeedForward
@@ -60,25 +60,43 @@ class TransformerBlock:
         n_embd: int,
         n_head: int,
         ffn_dim: Optional[int] = None,
-        rng: Optional[np.random.RandomState] = None
+        rng: Optional[np.random.RandomState] = None,
+        residual_scale: Optional[float] = None,
+        dropout: float = 0.0,
+        ln_eps: float = 1e-5,
+        dtype: Any = np.float32,
     ):
         self.n_embd = n_embd
         self.n_head = n_head
         self.ffn_dim = ffn_dim or (4 * n_embd)
 
         # Pre-attention LayerNorm and Multi-Head Attention
-        self.ln_1 = LayerNorm(n_embd=n_embd)
-        self.attn = CausalMultiHeadAttention(n_embd=n_embd, n_head=n_head, rng=rng)
+        self.ln_1 = LayerNorm(n_embd=n_embd, eps=ln_eps, dtype=dtype)
+        self.attn = CausalMultiHeadAttention(
+            n_embd=n_embd,
+            n_head=n_head,
+            rng=rng,
+            residual_scale=residual_scale,
+            dropout=dropout,
+            dtype=dtype,
+        )
 
         # Pre-FFN LayerNorm and Feed-Forward Network
-        self.ln_2 = LayerNorm(n_embd=n_embd)
-        self.ffn = FeedForward(n_embd=n_embd, ffn_dim=self.ffn_dim, rng=rng)
+        self.ln_2 = LayerNorm(n_embd=n_embd, eps=ln_eps, dtype=dtype)
+        self.ffn = FeedForward(
+            n_embd=n_embd,
+            ffn_dim=self.ffn_dim,
+            rng=rng,
+            residual_scale=residual_scale,
+            dropout=dropout,
+            dtype=dtype,
+        )
 
         # Cache for backward pass
         self.cached_x0: Optional[np.ndarray] = None
         self.cached_x1: Optional[np.ndarray] = None
 
-    def forward(self, x: np.ndarray) -> np.ndarray:
+    def forward(self, x: np.ndarray, training: bool = True) -> np.ndarray:
         """
         Forward pass through the Transformer block.
         
@@ -90,14 +108,14 @@ class TransformerBlock:
         # 1. Pre-LN Attention sub-layer with residual connection
         # x1 = x + Attention(LN_1(x))
         norm_x0 = self.ln_1.forward(x)
-        attn_out = self.attn.forward(norm_x0)
+        attn_out = self.attn.forward(norm_x0, training=training)
         x1 = x + attn_out
         self.cached_x1 = x1
 
         # 2. Pre-LN Feed-Forward sub-layer with residual connection
         # output = x1 + FFN(LN_2(x1))
         norm_x1 = self.ln_2.forward(x1)
-        ffn_out = self.ffn.forward(norm_x1)
+        ffn_out = self.ffn.forward(norm_x1, training=training)
         out = x1 + ffn_out
         return out
 

@@ -17,8 +17,9 @@ every token representation carries both:
 """
 
 import numpy as np
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, Any
 from src.math_utils import init_weights
+from src.activations import Dropout
 
 
 class TokenEmbedding:
@@ -38,11 +39,18 @@ class TokenEmbedding:
     Output:          shape (B, T, n_embd)
     """
 
-    def __init__(self, vocab_size: int, n_embd: int, rng: Optional[np.random.RandomState] = None):
+    def __init__(
+        self,
+        vocab_size: int,
+        n_embd: int,
+        rng: Optional[np.random.RandomState] = None,
+        dtype: Any = np.float32,
+    ):
         self.vocab_size = vocab_size
         self.n_embd = n_embd
+        self.dtype = np.dtype(dtype)
         # Initialize token embedding weights with N(0, 0.02)
-        self.W = init_weights((vocab_size, n_embd), std=0.02, rng=rng)
+        self.W = init_weights((vocab_size, n_embd), std=0.02, rng=rng, dtype=self.dtype)
         
         # Gradient cache
         self.grad_W = np.zeros_like(self.W)
@@ -86,11 +94,18 @@ class PositionalEmbedding:
     Output:          shape (1, T, n_embd) or (T, n_embd)
     """
 
-    def __init__(self, block_size: int, n_embd: int, rng: Optional[np.random.RandomState] = None):
+    def __init__(
+        self,
+        block_size: int,
+        n_embd: int,
+        rng: Optional[np.random.RandomState] = None,
+        dtype: Any = np.float32,
+    ):
         self.block_size = block_size
         self.n_embd = n_embd
+        self.dtype = np.dtype(dtype)
         # Initialize position embedding weights with N(0, 0.02)
-        self.W = init_weights((block_size, n_embd), std=0.02, rng=rng)
+        self.W = init_weights((block_size, n_embd), std=0.02, rng=rng, dtype=self.dtype)
         
         # Gradient cache
         self.grad_W = np.zeros_like(self.W)
@@ -126,14 +141,23 @@ class GPTEmbeddings:
     Combined Token + Positional Embeddings module.
     
     Forward:
-      x = TokenEmbedding(ids) + PositionalEmbedding(positions)
+      x = Dropout(TokenEmbedding(ids) + PositionalEmbedding(positions))
     """
 
-    def __init__(self, vocab_size: int, block_size: int, n_embd: int, rng: Optional[np.random.RandomState] = None):
-        self.token_emb = TokenEmbedding(vocab_size, n_embd, rng=rng)
-        self.pos_emb = PositionalEmbedding(block_size, n_embd, rng=rng)
+    def __init__(
+        self,
+        vocab_size: int,
+        block_size: int,
+        n_embd: int,
+        rng: Optional[np.random.RandomState] = None,
+        dropout: float = 0.0,
+        dtype: Any = np.float32,
+    ):
+        self.token_emb = TokenEmbedding(vocab_size, n_embd, rng=rng, dtype=dtype)
+        self.pos_emb = PositionalEmbedding(block_size, n_embd, rng=rng, dtype=dtype)
+        self.dropout = Dropout(p=dropout, rng=rng)
 
-    def forward(self, token_ids: np.ndarray) -> np.ndarray:
+    def forward(self, token_ids: np.ndarray, training: bool = True) -> np.ndarray:
         """
         token_ids: shape (B, T)
         returns:   shape (B, T, n_embd)
@@ -142,13 +166,15 @@ class GPTEmbeddings:
         tok_out = self.token_emb.forward(token_ids)
         pos_out = self.pos_emb.forward(T)
         # Elementwise addition of token semantics and position index
-        return tok_out + pos_out
+        out = tok_out + pos_out
+        return self.dropout.forward(out, training=training)
 
     def backward(self, d_out: np.ndarray) -> None:
         """
         d_out: shape (B, T, n_embd)
-        Backpropagates gradient to both token and positional embedding tables.
+        Backpropagates gradient through dropout, then to both token and positional embedding tables.
         """
+        d_out = self.dropout.backward(d_out)
         self.token_emb.backward(d_out)
         self.pos_emb.backward(d_out)
 

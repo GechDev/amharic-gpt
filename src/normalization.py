@@ -22,7 +22,7 @@ Transformers use LayerNorm because:
 """
 
 import numpy as np
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict, Any
 
 
 class LayerNorm:
@@ -42,13 +42,14 @@ class LayerNorm:
       beta:  shift vector of shape (D,), initialized to 0.0
     """
 
-    def __init__(self, n_embd: int, eps: float = 1e-5):
+    def __init__(self, n_embd: int, eps: float = 1e-5, dtype: Any = np.float32):
         self.n_embd = n_embd
         self.eps = eps
+        self.dtype = np.dtype(dtype)
 
         # Trainable parameters
-        self.gamma = np.ones(n_embd, dtype=np.float32)
-        self.beta = np.zeros(n_embd, dtype=np.float32)
+        self.gamma = np.ones(n_embd, dtype=self.dtype)
+        self.beta = np.zeros(n_embd, dtype=self.dtype)
 
         # Gradients
         self.grad_gamma = np.zeros_like(self.gamma)

@@ -87,3 +87,77 @@ class GELU:
         # Chain rule: dL/dx = d_out * dgelu_dx
         dx = d_out * dgelu_dx
         return dx
+
+
+class Dropout:
+    """
+    Inverted Dropout module implemented from scratch in pure NumPy.
+
+    Mathematical Formulation:
+    --------------------------
+    During Training (with probability p of dropping activations):
+      Keep probability: q = 1 - p
+      Binary mask:      M_i ~ Bernoulli(q)
+      Inverted scaling: M_scaled = M / q
+      Output:           y = x * M_scaled
+
+    Why "Inverted" Dropout?
+    -----------------------
+    In standard dropout, activations are multiplied by 1 / (1 - p) during evaluation
+    to match the expected value. Inverted dropout scales by 1 / (1 - p) during
+    *training*, which leaves the forward pass during inference / evaluation completely
+    untouched (an exact identity mapping y = x) with zero computational overhead.
+
+    Array Shapes:
+    -------------
+    Input x:  shape (..., D)
+    Mask:     shape (..., D), cached for backward pass
+    Output y: shape (..., D)
+    """
+
+    def __init__(self, p: float = 0.0, rng: Optional[np.random.RandomState] = None):
+        """
+        Args:
+            p (float): Dropout probability between 0.0 and 1.0 (fraction of elements to drop).
+            rng (Optional[np.random.RandomState]): Explicit NumPy random number generator.
+        """
+        assert 0.0 <= p < 1.0, f"Dropout probability p must be in [0.0, 1.0), got {p}."
+        self.p = float(p)
+        self.rng = rng if rng is not None else np.random.RandomState(42)
+        self.cached_mask: Optional[np.ndarray] = None
+
+    def forward(self, x: np.ndarray, training: bool = True) -> np.ndarray:
+        """
+        Forward pass for inverted dropout.
+
+        Args:
+            x (np.ndarray): Input activations array of arbitrary shape.
+            training (bool): If True and p > 0, drops activations with probability p
+                            and scales survivors by 1 / (1 - p).
+                            If False (evaluation mode) or p == 0, returns x unchanged.
+        """
+        if not training or self.p <= 0.0:
+            self.cached_mask = None
+            return x
+
+        keep_prob = 1.0 - self.p
+        # Draw random values from uniform distribution [0, 1)
+        # Elements < keep_prob are kept (1.0), others dropped (0.0)
+        # Scaled by 1 / keep_prob so expected value E[out] == E[x]
+        raw_mask = (self.rng.rand(*x.shape) < keep_prob).astype(x.dtype)
+        scale = x.dtype.type(1.0 / keep_prob) if hasattr(x.dtype, "type") else (1.0 / keep_prob)
+        self.cached_mask = raw_mask * scale
+        return x * self.cached_mask
+
+    def backward(self, d_out: np.ndarray) -> np.ndarray:
+        """
+        Analytical backward pass for inverted dropout.
+
+        Gradient is blocked (0.0) for dropped units and scaled by 1 / (1 - p)
+        for preserved units:
+          dL/dx = dL/dy * M_scaled
+        """
+        if self.cached_mask is None:
+            return d_out
+        return d_out * self.cached_mask
+

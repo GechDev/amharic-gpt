@@ -48,6 +48,14 @@ class GPTLanguageModel:
 
     def __init__(self, config: GPTConfig, rng: Optional[np.random.RandomState] = None):
         self.config = config
+        self.training: bool = True
+        dt = config.np_dtype
+
+        # GPT-2 style initialization scale for residual output projections:
+        # Each Transformer block has 2 residual sublayers (attention and FFN).
+        # Across L layers, 2L additions occur. To stabilize variance growth,
+        # residual projections (W_o and W2) are scaled by 1 / sqrt(2 * n_layer).
+        residual_scale = 1.0 / np.sqrt(2.0 * config.n_layer)
 
         # 1. Token and Positional Embeddings
         self.embeddings = GPTEmbeddings(
@@ -55,6 +63,8 @@ class GPTLanguageModel:
             block_size=config.block_size,
             n_embd=config.n_embd,
             rng=rng,
+            dropout=config.dropout,
+            dtype=dt,
         )
 
         # 2. Stack of L Transformer Blocks
@@ -64,53 +74,84 @@ class GPTLanguageModel:
                 n_head=config.n_head,
                 ffn_dim=config.ffn_dim,
                 rng=rng,
+                residual_scale=residual_scale,
+                dropout=config.dropout,
+                ln_eps=config.ln_eps,
+                dtype=dt,
             )
             for _ in range(config.n_layer)
         ]
 
         # 3. Final LayerNorm before vocabulary projection
-        self.ln_f = LayerNorm(n_embd=config.n_embd, eps=config.eps)
+        self.ln_f = LayerNorm(n_embd=config.n_embd, eps=config.ln_eps, dtype=dt)
 
         # 4. Final Vocabulary Projection (LM Head)
-        self.W_vocab = init_weights((config.n_embd, config.vocab_size), std=0.02, rng=rng)
-        self.b_vocab = init_zeros((config.vocab_size,))
+        # Weight tying (Lecture Slide 14 / Press & Wolf 2017):
+        # When tie_embeddings is True, the output projection matrix is wte.T (reusing
+        # token embeddings), reducing parameters by vocab_size * n_embd and improving
+        # representation alignment between input tokens and output logits.
+        if not config.tie_embeddings:
+            self.W_vocab = init_weights((config.n_embd, config.vocab_size), std=0.02, rng=rng, dtype=dt)
+            self.grad_W_vocab = np.zeros_like(self.W_vocab)
+        else:
+            self.W_vocab = None
+            self.grad_W_vocab = None
 
-        # Parameter gradients
-        self.grad_W_vocab = np.zeros_like(self.W_vocab)
+        self.b_vocab = init_zeros((config.vocab_size,), dtype=dt)
         self.grad_b_vocab = np.zeros_like(self.b_vocab)
 
         # Cache for backward pass
         self.cached_final_hidden: Optional[np.ndarray] = None
 
-    def forward(self, idx: np.ndarray) -> np.ndarray:
+    def train(self, mode: bool = True) -> "GPTLanguageModel":
+        """Sets the model in training mode (enabling dropout)."""
+        self.training = mode
+        return self
+
+    def eval(self) -> "GPTLanguageModel":
+        """Sets the model in evaluation mode (disabling dropout)."""
+        self.training = False
+        return self
+
+    def forward(self, idx: np.ndarray, training: Optional[bool] = None) -> np.ndarray:
         """
         Forward pass of the language model.
         
         Args:
             idx (np.ndarray): Integer token IDs of shape (B, T), where T <= block_size.
+            training (Optional[bool]): Explicit override for training mode. If None,
+                                      uses self.training.
             
         Returns:
             logits (np.ndarray): Next-token scores of shape (B, T, vocab_size).
         """
+        if training is None:
+            training = self.training
+
         B, T = idx.shape
         assert T <= self.config.block_size, (
             f"Cannot forward sequence of length {T}, block_size is {self.config.block_size}."
         )
 
         # 1. Embeddings: (B, T) -> (B, T, n_embd)
-        x = self.embeddings.forward(idx)
+        x = self.embeddings.forward(idx, training=training)
 
         # 2. Sequential pass through L Transformer blocks
         for block in self.blocks:
-            x = block.forward(x)
+            x = block.forward(x, training=training)
 
         # 3. Final LayerNorm
         x = self.ln_f.forward(x)
         self.cached_final_hidden = x
 
-        # 4. Vocabulary Projection: (B, T, n_embd) @ (n_embd, vocab_size) + (vocab_size,)
-        # Shape: (B, T, vocab_size)
-        logits = x @ self.W_vocab + self.b_vocab
+        # 4. Vocabulary Projection (LM Head)
+        # If tied, project using wte.T: (B, T, n_embd) @ (n_embd, vocab_size)
+        if self.config.tie_embeddings:
+            wte = self.embeddings.token_emb.W
+            logits = x @ wte.T + self.b_vocab
+        else:
+            logits = x @ self.W_vocab + self.b_vocab
+
         return logits
 
     def backward(self, d_logits: np.ndarray) -> None:
@@ -126,15 +167,24 @@ class GPTLanguageModel:
         D = self.config.n_embd
         hidden = self.cached_final_hidden  # (B, T, D)
 
-        # 1. Gradients through LM Head: logits = hidden @ W_vocab + b_vocab
+        # 1. Gradients through LM Head: logits = hidden @ W_head + b_vocab
         hidden_flat = hidden.reshape(-1, D)
         d_logits_flat = d_logits.reshape(-1, V)
 
-        self.grad_W_vocab += hidden_flat.T @ d_logits_flat
         self.grad_b_vocab += np.sum(d_logits_flat, axis=0)
 
-        # Gradient w.r.t final normalized hidden states
-        d_hidden = (d_logits_flat @ self.W_vocab.T).reshape(B, T, D)
+        if self.config.tie_embeddings:
+            # When tied, LM head weights are wte.T.
+            # Forward: logits = hidden @ wte.T + b_vocab
+            # Gradient w.r.t wte (shape: (vocab_size, n_embd)):
+            # d(wte) = d_logits_flat.T @ hidden_flat
+            # We ACCUMULATE this gradient into the shared embedding gradient array:
+            self.embeddings.token_emb.grad_W += d_logits_flat.T @ hidden_flat
+            # Gradient w.r.t final normalized hidden states:
+            d_hidden = (d_logits_flat @ self.embeddings.token_emb.W).reshape(B, T, D)
+        else:
+            self.grad_W_vocab += hidden_flat.T @ d_logits_flat
+            d_hidden = (d_logits_flat @ self.W_vocab.T).reshape(B, T, D)
 
         # 2. Backward through final LayerNorm
         d_x = self.ln_f.backward(d_hidden)
@@ -144,6 +194,7 @@ class GPTLanguageModel:
             d_x = block.backward(d_x)
 
         # 4. Backward through Token and Positional Embeddings
+        # TokenEmbedding will accumulate its lookup gradients into self.embeddings.token_emb.grad_W
         self.embeddings.backward(d_x)
 
     def num_parameters(self) -> int:
@@ -155,6 +206,7 @@ class GPTLanguageModel:
         """
         Returns a dictionary of all parameter arrays and their corresponding gradient arrays.
         Keys are formatted with standard dot-notation (e.g. 'blocks.0.attn.W_q').
+        When tie_embeddings=True, lm_head.W is excluded as it is tied to wte.
         """
         params: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}
 
@@ -169,7 +221,8 @@ class GPTLanguageModel:
         params.update(self.ln_f.get_params_and_grads("ln_f"))
 
         # LM Head
-        params["lm_head.W"] = (self.W_vocab, self.grad_W_vocab)
+        if not self.config.tie_embeddings:
+            params["lm_head.W"] = (self.W_vocab, self.grad_W_vocab)
         params["lm_head.b"] = (self.b_vocab, self.grad_b_vocab)
 
         return params
@@ -180,5 +233,6 @@ class GPTLanguageModel:
         for block in self.blocks:
             block.zero_grad()
         self.ln_f.zero_grad()
-        self.grad_W_vocab.fill(0.0)
+        if not self.config.tie_embeddings and self.grad_W_vocab is not None:
+            self.grad_W_vocab.fill(0.0)
         self.grad_b_vocab.fill(0.0)

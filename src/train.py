@@ -47,11 +47,17 @@ def estimate_loss(
     If training loss drops while validation loss increases, the model is overfitting.
     """
     losses = []
-    for _ in range(eval_iters):
-        X, Y = dataset.get_batch(batch_size=batch_size, rng=rng)
-        logits = model.forward(X)
-        loss, _ = cross_entropy_loss(logits, Y)
-        losses.append(loss)
+    was_training = getattr(model, "training", True)
+    model.eval()
+    try:
+        for _ in range(eval_iters):
+            X, Y = dataset.get_batch(batch_size=batch_size, rng=rng)
+            logits = model.forward(X)
+            loss, _ = cross_entropy_loss(logits, Y)
+            losses.append(loss)
+    finally:
+        if was_training:
+            model.train()
     return float(np.mean(losses))
 
 

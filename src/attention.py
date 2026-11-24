@@ -21,13 +21,18 @@ Finally, attention weights are multiplied by V to produce the context vector.
 """
 
 import numpy as np
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict, Any
 from src.math_utils import softmax, softmax_backward, create_causal_mask, init_weights, init_zeros
+from src.activations import Dropout
 
 
 class CausalSelfAttention:
     """
-    Causal Self-Attention layer.
+    Pedagogical Single-Head Causal Self-Attention layer.
+
+    NOTE: This class is maintained as a clean, simple pedagogical reference
+    illustrating single-head attention without multi-head tensor reshaping.
+    The primary model architecture uses CausalMultiHeadAttention.
 
     Mathematical Equations:
     -----------------------
@@ -41,28 +46,30 @@ class CausalSelfAttention:
       weights = softmax(masked_scores, axis=-1)
       output = weights @ V
 
-    Array Shapes:
-    -------------
-    X:             (B, T, D)
-    W_q, W_k, W_v: (D, D)
-    b_q, b_k, b_v: (D,)
-    Q, K, V:       (B, T, D)
-    scores:        (B, T, T)
-    weights:       (B, T, T)
-    output:        (B, T, D)
+    Scaling Factor:
+      The dot product is scaled by 1 / sqrt(d_k) (where d_k is the head dimension,
+      typically n_embd for a single head).
     """
 
-    def __init__(self, n_embd: int, rng: Optional[np.random.RandomState] = None):
+    def __init__(
+        self,
+        n_embd: int,
+        head_dim: Optional[int] = None,
+        rng: Optional[np.random.RandomState] = None,
+        dtype: Any = np.float32,
+    ):
         self.n_embd = n_embd
-        self.scale = 1.0 / np.sqrt(n_embd)
+        self.head_dim = head_dim if head_dim is not None else n_embd
+        self.scale = 1.0 / np.sqrt(self.head_dim)
+        self.dtype = np.dtype(dtype)
 
         # Projections for Q, K, V
-        self.W_q = init_weights((n_embd, n_embd), std=0.02, rng=rng)
-        self.b_q = init_zeros((n_embd,))
-        self.W_k = init_weights((n_embd, n_embd), std=0.02, rng=rng)
-        self.b_k = init_zeros((n_embd,))
-        self.W_v = init_weights((n_embd, n_embd), std=0.02, rng=rng)
-        self.b_v = init_zeros((n_embd,))
+        self.W_q = init_weights((n_embd, n_embd), std=0.02, rng=rng, dtype=self.dtype)
+        self.b_q = init_zeros((n_embd,), dtype=self.dtype)
+        self.W_k = init_weights((n_embd, n_embd), std=0.02, rng=rng, dtype=self.dtype)
+        self.b_k = init_zeros((n_embd,), dtype=self.dtype)
+        self.W_v = init_weights((n_embd, n_embd), std=0.02, rng=rng, dtype=self.dtype)
+        self.b_v = init_zeros((n_embd,), dtype=self.dtype)
 
         # Parameter gradients
         self.grad_W_q = np.zeros_like(self.W_q)
@@ -101,7 +108,7 @@ class CausalSelfAttention:
         scores = (Q @ K.swapaxes(-1, -2)) * self.scale
 
         # Apply causal mask: prevents attending to future positions
-        mask = create_causal_mask(T)
+        mask = create_causal_mask(T, dtype=X.dtype)
         masked_scores = scores + mask  # broadcast (T, T) to (B, T, T)
 
         # Attention weights via numerically stable softmax
@@ -238,25 +245,41 @@ class CausalMultiHeadAttention:
     Output projection: concat @ W_o + b_o  -> (B, T, D)
     """
 
-    def __init__(self, n_embd: int, n_head: int, rng: Optional[np.random.RandomState] = None):
+    def __init__(
+        self,
+        n_embd: int,
+        n_head: int,
+        rng: Optional[np.random.RandomState] = None,
+        residual_scale: Optional[float] = None,
+        dropout: float = 0.0,
+        dtype: Any = np.float32,
+    ):
         assert n_embd % n_head == 0, f"n_embd ({n_embd}) must be divisible by n_head ({n_head})."
 
         self.n_embd = n_embd
         self.n_head = n_head
         self.head_dim = n_embd // n_head
         self.scale = 1.0 / np.sqrt(self.head_dim)
+        self.dtype = np.dtype(dtype)
+
+        # Residual projection scaling (GPT-2 standard: 1 / sqrt(2 * n_layer))
+        w_o_std = 0.02 * residual_scale if residual_scale is not None else 0.02
 
         # Q, K, V projections
-        self.W_q = init_weights((n_embd, n_embd), std=0.02, rng=rng)
-        self.b_q = init_zeros((n_embd,))
-        self.W_k = init_weights((n_embd, n_embd), std=0.02, rng=rng)
-        self.b_k = init_zeros((n_embd,))
-        self.W_v = init_weights((n_embd, n_embd), std=0.02, rng=rng)
-        self.b_v = init_zeros((n_embd,))
+        self.W_q = init_weights((n_embd, n_embd), std=0.02, rng=rng, dtype=self.dtype)
+        self.b_q = init_zeros((n_embd,), dtype=self.dtype)
+        self.W_k = init_weights((n_embd, n_embd), std=0.02, rng=rng, dtype=self.dtype)
+        self.b_k = init_zeros((n_embd,), dtype=self.dtype)
+        self.W_v = init_weights((n_embd, n_embd), std=0.02, rng=rng, dtype=self.dtype)
+        self.b_v = init_zeros((n_embd,), dtype=self.dtype)
 
         # Output projection W_o, b_o
-        self.W_o = init_weights((n_embd, n_embd), std=0.02, rng=rng)
-        self.b_o = init_zeros((n_embd,))
+        self.W_o = init_weights((n_embd, n_embd), std=w_o_std, rng=rng, dtype=self.dtype)
+        self.b_o = init_zeros((n_embd,), dtype=self.dtype)
+
+        # Dropout modules
+        self.attn_dropout = Dropout(p=dropout, rng=rng)
+        self.resid_dropout = Dropout(p=dropout, rng=rng)
 
         # Gradients
         self.grad_W_q = np.zeros_like(self.W_q)
@@ -276,7 +299,7 @@ class CausalMultiHeadAttention:
         self.cached_weights: Optional[np.ndarray] = None
         self.cached_concat: Optional[np.ndarray] = None
 
-    def forward(self, X: np.ndarray) -> np.ndarray:
+    def forward(self, X: np.ndarray, training: bool = True) -> np.ndarray:
         """
         Forward pass for Multi-Head Causal Attention.
         
@@ -310,7 +333,7 @@ class CausalMultiHeadAttention:
 
         # Step 4: Apply causal mask
         # Mask shape (T, T) broadcasts across B and H to (B, H, T, T)
-        mask = create_causal_mask(T)
+        mask = create_causal_mask(T, dtype=X.dtype)
         masked_scores = scores + mask
 
         # Step 5: Softmax to get attention weights
@@ -318,9 +341,12 @@ class CausalMultiHeadAttention:
         weights = softmax(masked_scores, axis=-1)
         self.cached_weights = weights
 
+        # Apply attention dropout
+        weights_dropped = self.attn_dropout.forward(weights, training=training)
+
         # Step 6: Attention output per head
         # (B, H, T, T) @ (B, H, T, d_k) -> (B, H, T, d_k)
-        head_out = weights @ V
+        head_out = weights_dropped @ V
 
         # Step 7: Concatenate heads
         # (B, H, T, d_k) -> (B, T, H, d_k) -> (B, T, D)
@@ -330,6 +356,7 @@ class CausalMultiHeadAttention:
         # Step 8: Output linear projection
         # (B, T, D) @ (D, D) + (D,) -> (B, T, D)
         out = concat @ self.W_o + self.b_o
+        out = self.resid_dropout.forward(out, training=training)
         return out
 
     def backward(self, d_out: np.ndarray) -> np.ndarray:
@@ -340,6 +367,9 @@ class CausalMultiHeadAttention:
         Returns dX:  gradient w.r.t input X of shape (B, T, D)
         """
         assert self.cached_X is not None and self.cached_concat is not None, "Call forward first."
+
+        # Propagate through residual dropout
+        d_out = self.resid_dropout.backward(d_out)
 
         X = self.cached_X
         Q = self.cached_Q          # (B, H, T, d_k)
@@ -366,11 +396,16 @@ class CausalMultiHeadAttention:
         # (B, T, D) -> (B, T, H, d_k) -> (B, H, T, d_k)
         d_head_out = d_concat.reshape(B, T, H, d_k).swapaxes(1, 2)
 
-        # Step 6 Backward: head_out = weights @ V
-        # d_weights: (B, H, T, d_k) @ (B, H, d_k, T) -> (B, H, T, T)
-        d_weights = d_head_out @ V.swapaxes(-1, -2)
+        # Step 6 Backward: head_out = weights_dropped @ V
+        # d_weights_dropped: (B, H, T, d_k) @ (B, H, d_k, T) -> (B, H, T, T)
+        d_weights_dropped = d_head_out @ V.swapaxes(-1, -2)
         # dV: (B, H, T, T).T @ (B, H, T, d_k) -> (B, H, T, d_k)
-        dV = weights.swapaxes(-1, -2) @ d_head_out
+        # Note: head_out used weights_dropped
+        weights_dropped = self.attn_dropout.cached_mask * weights if self.attn_dropout.cached_mask is not None else weights
+        dV = weights_dropped.swapaxes(-1, -2) @ d_head_out
+
+        # Propagate through attention dropout to get gradient w.r.t softmax weights
+        d_weights = self.attn_dropout.backward(d_weights_dropped)
 
         # Step 5 Backward: Softmax
         # d_scores: (B, H, T, T)
