@@ -22,7 +22,6 @@ from src.optimizer import AdamW, get_cosine_schedule_with_warmup_lr
 from src.loss import cross_entropy_loss
 from src.train import train, evaluate_validation
 from src.utils import load_checkpoint
-from scripts.plot_curves import plot_training_curves
 
 
 def test_lr_schedule_warmup_and_cosine():
@@ -297,6 +296,9 @@ def test_early_stopping_halts_training():
 
 def test_plot_curves_script_execution():
     """Verify scripts/plot_curves.py reads metrics.csv and outputs a valid PNG."""
+    pytest.importorskip("matplotlib")
+    from scripts.plot_curves import plot_training_curves
+
     with tempfile.TemporaryDirectory() as tmpdir:
         csv_path = os.path.join(tmpdir, "metrics.csv")
         png_path = os.path.join(tmpdir, "test_curves.png")

@@ -11,9 +11,14 @@ import sys
 import csv
 import argparse
 from typing import Dict, List, Optional
-import matplotlib
-matplotlib.use("Agg")  # Non-interactive backend
-import matplotlib.pyplot as plt
+
+try:
+    import matplotlib
+    matplotlib.use("Agg")  # Non-interactive backend
+    import matplotlib.pyplot as plt
+    HAS_MATPLOTLIB = True
+except ImportError:
+    HAS_MATPLOTLIB = False
 
 
 def load_metrics(metrics_csv_path: str) -> Dict[str, List[float]]:
@@ -74,6 +79,8 @@ def plot_training_curves(
     title: str = "Amharic GPT Training Dynamics"
 ) -> str:
     """Plots multi-panel diagnostic curves from metrics CSV."""
+    if not HAS_MATPLOTLIB:
+        raise ImportError("matplotlib is required for plot_training_curves. Install via `pip install matplotlib`.")
     data = load_metrics(metrics_path)
 
     fig, axes = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
