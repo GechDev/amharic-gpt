@@ -23,6 +23,7 @@ Developed as a rigorous university assignment demonstrating the inner mathematic
 - [Project Directory Layout](#project-directory-layout)
 - [Installation & Quickstart](#installation--quickstart)
 - [Test Suite & Verification](#test-suite--verification)
+- [Course Evaluator Final Audit & Verification](EVALUATION.md)
 - [Honest Limitations & Future Work](#honest-limitations--future-work)
 
 ---
