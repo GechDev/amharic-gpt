@@ -26,6 +26,7 @@ from src.data import AmharicDataset, create_datasets_from_text, preprocess_file
 from src.model import GPTLanguageModel
 from src.loss import cross_entropy_loss
 from src.optimizer import AdamW, clip_grad_norm
+from src.utils import save_checkpoint
 
 
 def estimate_loss(
@@ -136,6 +137,19 @@ def train(
     if verbose:
         print("-" * 65)
         print(f"[Training] Completed {max_iters} iterations in {total_time:.2f}s ({max_iters/total_time:.2f} it/s).")
+
+    # Save checkpoint if directory is specified
+    if checkpoint_dir:
+        last_val = history["val_loss"][-1] if history["val_loss"] else None
+        save_checkpoint(
+            checkpoint_dir=checkpoint_dir,
+            model=model,
+            config=model.config,
+            tokenizer=tokenizer,
+            step=max_iters,
+            val_loss=last_val,
+            name="checkpoint",
+        )
 
     return history
 

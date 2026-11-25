@@ -1,0 +1,19 @@
+{
+  "step": 150,
+  "val_loss": 3.389829766299342,
+  "config": {
+    "vocab_size": 174,
+    "block_size": 32,
+    "n_embd": 64,
+    "n_head": 2,
+    "n_layer": 2,
+    "ffn_dim": 256,
+    "dropout": 0.0,
+    "learning_rate": 0.001,
+    "weight_decay": 0.01,
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "eps": 1e-08
+  },
+  "weights_file": "checkpoint.npz"
+}
