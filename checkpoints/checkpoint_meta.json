@@ -1,6 +1,6 @@
 {
-  "step": 150,
-  "val_loss": 3.389829766299342,
+  "step": 50,
+  "val_loss": 3.740893672689725,
   "config": {
     "vocab_size": 174,
     "block_size": 32,
